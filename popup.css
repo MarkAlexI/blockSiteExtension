@@ -6,6 +6,7 @@ body {
 }
 
 #header {
+  min-width: 300px;
   margin-bottom: 20px;
   text-align: center;
 }
