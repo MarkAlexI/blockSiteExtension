@@ -19,21 +19,21 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
 
   const blockURL = document.createElement('input');
   blockURL.type = 'text';
-  blockURL.placeholder = 'Type block URL'
+  blockURL.placeholder = chrome.i18n.getMessage('blockurl');
   blockURL.value = blockURLValue;
 
   const redirectURL = document.createElement('input');
   redirectURL.type = 'text';
-  redirectURL.placeholder = 'Type redirect URL'
+  redirectURL.placeholder = chrome.i18n.getMessage('redirecturl');
   redirectURL.value = redirectURLValue;
 
   const saveButton = document.createElement('button');
   saveButton.className = 'save-btn';
-  saveButton.textContent = 'Save';
+  saveButton.textContent = chrome.i18n.getMessage('savebtn');
 
   const deleteButton = document.createElement('button');
   deleteButton.className = 'delete-btn';
-  deleteButton.textContent = 'Delete';
+  deleteButton.textContent = chrome.i18n.getMessage('deletebtn');
 
   saveButton.addEventListener('click', () => {
     if (blockURL.value === '') return;
@@ -46,12 +46,14 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
       );
 
       if (ruleExists) {
-        alert('Rule now exist');
+        const alertMessage = chrome.i18n.getMessage('alertruleexist');
+        alert(alertMessage);
       } else {
         rules.push({ blockURL: blockURL.value, redirectURL: redirectURL.value });
         chrome.storage.sync.set({ rules }, () => {
           createRuleInputs();
-          statusOutput.value = `Saved ${rules.length} rules`;
+          const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
+          statusOutput.value = outputText;
         });
       }
     });
