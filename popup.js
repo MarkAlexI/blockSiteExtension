@@ -13,7 +13,7 @@ chrome.storage.sync.get('rules', ({ rules }) => {
 });
 
 function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
-  
+
   const ruleDiv = document.createElement('div');
   ruleDiv.className = 'rule';
 
@@ -37,7 +37,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
 
   saveButton.addEventListener('click', () => {
     if (blockURL.value === '') return;
-    
+
     chrome.storage.sync.get('rules', ({ rules }) => {
       rules = rules || [];
 
@@ -64,7 +64,8 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
       rules = rules || [];
       rules = rules.filter((rule) => rule.blockURL !== blockURL.value);
       chrome.storage.sync.set({ rules });
-      statusOutput.value = `Saved ${rules.length} rules`;
+      const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
+      statusOutput.value = outputText;
     });
     ruleDiv.remove();
   });
@@ -79,4 +80,4 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
 
 addRuleButton.addEventListener('click', () => {
   createRuleInputs();
-});
+});''
