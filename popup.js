@@ -49,7 +49,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
         const alertMessage = chrome.i18n.getMessage('alertruleexist');
         alert(alertMessage);
       } else {
-        rules.push({ blockURL: blockURL.value, redirectURL: redirectURL.value });
+        rules.push({ blockURL: blockURL.value.trim(), redirectURL: redirectURL.value.trim() });
         chrome.storage.sync.set({ rules }, () => {
           createRuleInputs();
           const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
@@ -62,7 +62,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
   deleteButton.addEventListener('click', () => {
     chrome.storage.sync.get('rules', ({ rules }) => {
       rules = rules || [];
-      rules = rules.filter((rule) => rule.blockURL !== blockURL.value);
+      rules = rules.filter((rule) => rule.blockURL !== blockURL.value.trim());
       chrome.storage.sync.set({ rules });
       const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
       statusOutput.value = outputText;
