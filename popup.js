@@ -62,7 +62,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
   deleteButton.addEventListener('click', () => {
     chrome.storage.sync.get('rules', ({ rules }) => {
       rules = rules || [];
-      rules = rules.filter((rule) => rule.blockURL !== blockURL.value.trim() && rule.redirectURL !== redirectURL.value.trim());
+      rules = rules.filter((rule) => rule.blockURL !== blockURL.value.trim() || rule.redirectURL !== redirectURL.value.trim());
       chrome.storage.sync.set({ rules });
       const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
       statusOutput.value = outputText;
