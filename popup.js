@@ -72,14 +72,17 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
     ruleDiv.remove();
   });
 
-  ruleDiv.appendChild(blockURL);
-  ruleDiv.appendChild(redirectURL);
-  ruleDiv.appendChild(saveButton);
-  ruleDiv.appendChild(deleteButton);
+  setTimeout(function() {
+    ruleDiv.appendChild(blockURL);
+    ruleDiv.appendChild(redirectURL);
+    ruleDiv.appendChild(saveButton);
+    ruleDiv.appendChild(deleteButton);
 
-  rulesContainer.insertAdjacentElement('afterbegin', ruleDiv);
+    rulesContainer.insertAdjacentElement('afterbegin', ruleDiv);
+  }, 0);
 }
 
 addRuleButton.addEventListener('click', () => {
   createRuleInputs();
-});''
+});
+''
