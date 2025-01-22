@@ -72,6 +72,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
           blockURL.readOnly = true;
           redirectURL.readOnly = true;
           saveButton.remove();
+          customAlert('+ 1');
         });
       }
     });
@@ -85,6 +86,9 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
       const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
       statusOutput.value = outputText;
     });
+    if (blockURL.value) {
+      customAlert('- 1');
+    }
     ruleDiv.remove();
   });
 
