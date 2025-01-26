@@ -7,6 +7,10 @@ const rulesContainer = document.getElementById('rules-container');
 const addRuleButton = document.getElementById('add-rule');
 const statusOutput = document.getElementById('status');
 
+const wrongRedirectUrl = chrome.i18n.getMessage('wrongredirecturl');
+const blockUrlOnlyAscii = chrome.i18n.getMessage('blockurlonlyascii');
+const blockUrlOnlyLower = chrome.i18n.getMessage('blockurlonlylower');
+
 chrome.storage.sync.get('rules', ({ rules }) => {
   if (rules) {
     rules.forEach(rule => {
@@ -41,11 +45,11 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
   saveButton.addEventListener('click', () => {
     if (blockURL.value === '') return;
     if (!isValidAscii(blockURL.value)) {
-      customAlert('Available only ASCII on block URL');
+      customAlert(blockUrlOnlyAscii);
       return;
     }
     if (!isOnlyLowerCase(blockURL.value)) {
-      customAlert('Available only lowercase letters');
+      customAlert(blockUrlOnlyLower);
       return;
     }
 
@@ -64,7 +68,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
       } else {
         if (redirectURL.value) {
           if (!isValidURL(redirectURL.value)) {
-            customAlert('Wrong redirect URL');
+            customAlert(wrongRedirectUrl);
             return;
           }
         }
@@ -88,6 +92,7 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
       rules = rules || [];
       rules = rules.filter((rule) => rule.blockURL !== blockURL.value.trim() || rule.redirectURL !== redirectURL.value.trim());
       chrome.storage.sync.set({ rules });
+
       const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
       statusOutput.value = outputText;
     });
@@ -115,4 +120,3 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
 addRuleButton.addEventListener('click', () => {
   createRuleInputs();
 });
-''
