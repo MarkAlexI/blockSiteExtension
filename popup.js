@@ -30,8 +30,7 @@ const blockUrlOnlyAscii = chrome.i18n.getMessage('blockurlonlyascii');
 const blockUrlOnlyLower = chrome.i18n.getMessage('blockurlonlylower');
 
 function makeInputReadOnly(el) {
-  el.readOnly = true;
-  el.tabIndex = -1;
+  el.inert = true;
   el.placeholder = '';
   el.classList.add('input-readonly');
 }
