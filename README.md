@@ -1,5 +1,32 @@
 # Block Site Extension: Website Time Management
+
+![GitHub license](https://img.shields.io/github/license/MarkAlexI/blockSiteExtension)
+![GitHub stars](https://img.shields.io/github/stars/MarkAlexI/blockSiteExtension?style=social)
+![GitHub forks](https://img.shields.io/github/forks/MarkAlexI/blockSiteExtension?style=social)
+![Last commit](https://img.shields.io/github/last-commit/MarkAlexI/blockSiteExtension)
+![Issues](https://img.shields.io/github/issues/MarkAlexI/blockSiteExtension)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-v1.36.4-brightgreen?logo=google-chrome)](https://chromewebstore.google.com/detail/kfhgdgokgjmdboidlhphajinmgpcmmec)
+[![AMO](https://img.shields.io/amo/v/blockersite)](https://addons.mozilla.org/uk/firefox/addon/blockersite/)
+
+## About
 An extension that will block or redirect requests in browser used `declarativeNetRequest` for generating dynamic rules.
+
+## Installation
+
+The `main` branch of this repository contains a ready-to-use package for installation in Google Chrome (Developer Mode) — simply click the "<> Code" button to download the package. No build or additional steps are required.
+
+The `firefoxversion` branch contains a package tailored for Mozilla Firefox.
+
+Alternatively, you can use the release packages provided.
+
+For a more convenient installation, use the official stores:
+- [Chrome Web Store](https://chromewebstore.google.com/detail/kfhgdgokgjmdboidlhphajinmgpcmmec)
+- [Mozilla Add-ons (AMO)](https://addons.mozilla.org/uk/firefox/addon/blockersite/)
+
+Both versions work on mobile browsers:
+- **Kiwi Browser** for the Chrome version
+- **Firefox Mobile** for the Firefox version
+
 ![blocker.png](/images/blocker.png "blocker")
 ## How to work with extension
 To block a resource, enter a part of its name in the left input field without specifying the protocol. For example, entering "facebook" will block all subdomains of this resource. In the right input field, enter the URL for redirection, fully specified with the protocol, e.g., "https://google.com". Then click the save button. If the redirect URL is left empty, the target site will simply be blocked. To modify a rule, delete the old rule and add a new one.
