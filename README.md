@@ -13,7 +13,7 @@ An extension that will block or redirect requests in browser used `declarativeNe
 
 ## Installation
 
-The `main` branch of this repository contains a ready-to-use package for installation in Google Chrome (Developer Mode) — simply click the "<> Code" button to download the package. No build or additional steps are required.
+The `main` branch of this repository contains a ready-to-use package for installation in Google Chrome (Developer Mode) — simply click the "<> Code" button then click "Download ZIP" to download the package. No build or additional steps are required.
 
 The `firefoxversion` branch contains a package tailored for Mozilla Firefox.
 
