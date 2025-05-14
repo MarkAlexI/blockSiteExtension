@@ -2,6 +2,8 @@ import { customAlert } from './scripts/customAlert.js';
 import { isValidURL } from './scripts/isValidURL.js';
 import { isValidAscii } from './scripts/isValidAscii.js';
 import { isOnlyLowerCase } from './scripts/isOnlyLowerCase.js';
+import { isBlockedURL } from './scripts/isBlockedURL.js';
+import { getCurrentTabs } from './scripts/getCurrentTabs.js';
 
 const donateSpan = document.getElementById('donate-text');
 const donateSpanText = chrome.i18n.getMessage('donatespantext');
@@ -25,6 +27,55 @@ const rulesContainer = document.getElementById('rules-container');
 const addRuleButton = document.getElementById('add-rule');
 const statusOutput = document.getElementById('status');
 
+let thisTabs = [];
+
+(async () => {
+  thisTabs = await getCurrentTabs();
+  
+  chrome.storage.sync.get('rules', ({ rules }) => {
+    rules = rules || [];
+    
+    rules.forEach(rule => {
+      createRuleInputs(rule.blockURL, rule.redirectURL);
+    });
+    
+    const currentUrl = normalizeUrlFilter(thisTabs[0]?.url || '');
+    const alreadyBlocked = rules.some(rule => rule.blockURL === currentUrl);
+    
+    if (!isBlockedURL(thisTabs) && !alreadyBlocked) {
+      createBlockThisSiteButton(currentUrl);
+    }
+  });
+})();
+
+//add favicon
+const createBlockThisSiteButton = (url) => {
+  const newButton = document.createElement('button');
+  newButton.id = 'block-that';
+  newButton.textContent = chrome.i18n.getMessage('blockthat');
+  
+  newButton.addEventListener('click', () => {
+    chrome.storage.sync.get('rules', ({ rules }) => {
+      rules = rules || [];
+      
+      const alreadyExists = rules.some(rule => rule.blockURL === url);
+      if (!alreadyExists) {
+        rules.push({ blockURL: url, redirectURL: '' });
+        chrome.storage.sync.set({ rules }, () => {
+          createRuleInputs(url, '');
+          const outputText = chrome.i18n.getMessage('savedrules', ' ' + rules.length + ' ');
+          statusOutput.value = outputText;
+          customAlert('+ 1');
+          
+          newButton.remove();
+        });
+      }
+    });
+  });
+  
+  addRuleButton.insertAdjacentElement('afterend', newButton);
+};
+
 const wrongRedirectUrl = chrome.i18n.getMessage('wrongredirecturl');
 const blockUrlOnlyAscii = chrome.i18n.getMessage('blockurlonlyascii');
 const blockUrlOnlyLower = chrome.i18n.getMessage('blockurlonlylower');
@@ -35,15 +86,7 @@ function makeInputReadOnly(el) {
   el.classList.add('input-readonly');
 }
 
-chrome.storage.sync.get('rules', ({ rules }) => {
-  if (rules) {
-    rules.forEach(rule => {
-      createRuleInputs(rule.blockURL, rule.redirectURL);
-    });
-  }
-});
-
-function createRuleInputs(blockURLValue = '', redirectURLValue = '', currSite = false) {
+function createRuleInputs(blockURLValue = '', redirectURLValue = '') {
   
   const ruleDiv = document.createElement('div');
   ruleDiv.className = 'rule';
@@ -98,8 +141,6 @@ function createRuleInputs(blockURLValue = '', redirectURLValue = '', currSite = 
       }
     });
   }
-  
-  currSite && createNewRule();
   
   const createSaveButton = () => {
     saveButton = document.createElement('button');
