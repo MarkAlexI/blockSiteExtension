@@ -50,6 +50,8 @@ let thisTabs = [];
 
 //add favicon
 const createBlockThisSiteButton = (url) => {
+  if (!url || url.trim() === '') return;
+
   const newButton = document.createElement('button');
   newButton.id = 'block-that';
   newButton.textContent = chrome.i18n.getMessage('blockthat');
