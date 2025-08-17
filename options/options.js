@@ -1,22 +1,23 @@
 import { isValidURL } from '../scripts/isValidURL.js';
 import { isValidAscii } from '../scripts/isValidAscii.js';
 import { isOnlyLowerCase } from '../scripts/isOnlyLowerCase.js';
+import { t } from '../scripts/t.js';
 
 const rulesBody = document.getElementById('rules-body');
 const addRuleButton = document.getElementById('add-rule');
 const statusElement = document.getElementById('status');
 
-document.getElementById('options-title').textContent = chrome.i18n.getMessage('header');
-document.getElementById('header-text').textContent = chrome.i18n.getMessage('header');
-addRuleButton.textContent = chrome.i18n.getMessage('addrule');
-document.getElementById('block-url-header').textContent = chrome.i18n.getMessage('blockurl');
-document.getElementById('redirect-url-header').textContent = chrome.i18n.getMessage('redirecturl');
-document.getElementById('actions-header').textContent = chrome.i18n.getMessage('actionsheader') || 'Дії';
+document.getElementById('options-title').textContent = t('header');
+document.getElementById('header-text').textContent = t('header');
+addRuleButton.textContent = t('addrule');
+document.getElementById('block-url-header').textContent = t('blockurl');
+document.getElementById('redirect-url-header').textContent = t('redirecturl');
+document.getElementById('actions-header').textContent = t('actionsheader') || 'Дії';
 
-const wrongRedirectUrl = chrome.i18n.getMessage('wrongredirecturl');
-const blockUrlOnlyAscii = chrome.i18n.getMessage('blockurlonlyascii');
-const blockUrlOnlyLower = chrome.i18n.getMessage('blockurlonlylower');
-const alertRuleExist = chrome.i18n.getMessage('alertruleexist');
+const wrongRedirectUrl = t('wrongredirecturl');
+const blockUrlOnlyAscii = t('blockurlonlyascii');
+const blockUrlOnlyLower = t('blockurlonlylower');
+const alertRuleExist = t('alertruleexist');
 
 function loadRules() {
   chrome.storage.sync.get('rules', ({ rules }) => {
@@ -32,7 +33,7 @@ function loadRules() {
       const emptyRow = document.createElement('tr');
       const emptyCell = document.createElement('td');
       emptyCell.colSpan = 3;
-      emptyCell.textContent = chrome.i18n.getMessage('norules');
+      emptyCell.textContent = t('norules');
       emptyRow.appendChild(emptyCell);
       rulesBody.appendChild(emptyRow);
     }
@@ -57,13 +58,13 @@ function createRuleRow(rule, index) {
   actionsCell.className = 'actions';
   
   const editBtn = document.createElement('button');
-  editBtn.textContent = chrome.i18n.getMessage('editbtn');
+  editBtn.textContent = t('editbtn');
   editBtn.addEventListener('click', () => toggleEditMode(row, index, rule));
   actionsCell.appendChild(editBtn);
 
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'delete-btn';
-  deleteBtn.textContent = chrome.i18n.getMessage('deletebtn');
+  deleteBtn.textContent = t('deletebtn');
   deleteBtn.addEventListener('click', () => deleteRule(index));
   actionsCell.appendChild(deleteBtn);
   
@@ -75,7 +76,7 @@ function deleteRule(index) {
   chrome.storage.sync.get('rules', ({ rules }) => {
     rules.splice(index, 1);
     chrome.storage.sync.set({ rules }, () => {
-      statusElement.textContent = chrome.i18n.getMessage('ruleddeleted');
+      statusElement.textContent = t('ruleddeleted');
       loadRules();
     });
   });
@@ -87,7 +88,8 @@ function toggleEditMode(row, index, rule) {
   const blockInput = document.createElement('input');
   blockInput.type = 'text';
   blockInput.value = rule.blockURL;
-  blockInput.placeholder = chrome.i18n.getMessage('blockurl');
+  blockInput.name = `row${row}index${index}block`;
+  blockInput.placeholder = t('blockurl');
   const blockCell = document.createElement('td');
   blockCell.className = 'edit-mode';
   blockCell.appendChild(blockInput);
@@ -96,7 +98,8 @@ function toggleEditMode(row, index, rule) {
   const redirectInput = document.createElement('input');
   redirectInput.type = 'text';
   redirectInput.value = rule.redirectURL;
-  redirectInput.placeholder = chrome.i18n.getMessage('redirecturl');
+  redirectInput.name = `row${row}index${index}redirect`;
+  redirectInput.placeholder = t('redirecturl');
   const redirectCell = document.createElement('td');
   redirectCell.className = 'edit-mode';
   redirectCell.appendChild(redirectInput);
@@ -107,12 +110,12 @@ function toggleEditMode(row, index, rule) {
   
   const saveBtn = document.createElement('button');
   saveBtn.className = 'save-btn';
-  saveBtn.textContent = chrome.i18n.getMessage('savebtn');
+  saveBtn.textContent = t('savebtn');
   saveBtn.addEventListener('click', () => saveEditedRule(index, blockInput.value, redirectInput.value, row));
   actionsCell.appendChild(saveBtn);
   
   const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = chrome.i18n.getMessage('cancelbtn');
+  cancelBtn.textContent = t('cancelbtn');
   cancelBtn.addEventListener('click', () => {
     row.replaceWith(createRuleRow(rule, index));
   });
@@ -136,7 +139,7 @@ function saveEditedRule(index, newBlock, newRedirect, row) {
     
     rules[index] = { blockURL: trimmedBlock, redirectURL: trimmedRedirect };
     chrome.storage.sync.set({ rules }, () => {
-      statusElement.textContent = chrome.i18n.getMessage('ruleupdated');
+      statusElement.textContent = t('ruleupdated');
       loadRules();
     });
   });
@@ -148,7 +151,7 @@ addRuleButton.addEventListener('click', () => {
   
   const blockInput = document.createElement('input');
   blockInput.type = 'text';
-  blockInput.placeholder = chrome.i18n.getMessage('blockurl');
+  blockInput.placeholder = t('blockurl');
   const blockCell = document.createElement('td');
   blockCell.className = 'edit-mode';
   blockCell.appendChild(blockInput);
@@ -156,7 +159,7 @@ addRuleButton.addEventListener('click', () => {
   
   const redirectInput = document.createElement('input');
   redirectInput.type = 'text';
-  redirectInput.placeholder = chrome.i18n.getMessage('redirecturl');
+  redirectInput.placeholder = t('redirecturl');
   const redirectCell = document.createElement('td');
   redirectCell.className = 'edit-mode';
   redirectCell.appendChild(redirectInput);
@@ -167,12 +170,12 @@ addRuleButton.addEventListener('click', () => {
   
   const saveBtn = document.createElement('button');
   saveBtn.className = 'save-btn';
-  saveBtn.textContent = chrome.i18n.getMessage('savebtn');
+  saveBtn.textContent = t('savebtn');
   saveBtn.addEventListener('click', () => saveNewRule(blockInput.value, redirectInput.value, newRow));
   actionsCell.appendChild(saveBtn);
   
   const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = chrome.i18n.getMessage('cancelbtn');
+  cancelBtn.textContent = t('cancelbtn');
   cancelBtn.addEventListener('click', () => newRow.remove());
   actionsCell.appendChild(cancelBtn);
   
@@ -196,7 +199,7 @@ function saveNewRule(newBlock, newRedirect, row) {
     
     rules.push({ blockURL: trimmedBlock, redirectURL: trimmedRedirect });
     chrome.storage.sync.set({ rules }, () => {
-      statusElement.textContent = chrome.i18n.getMessage('rulenewadded');
+      statusElement.textContent = t('rulenewadded');
       loadRules();
     });
   });
@@ -204,7 +207,7 @@ function saveNewRule(newBlock, newRedirect, row) {
 
 function validateRule(blockURL, redirectURL) {
   if (blockURL.trim() === '') {
-    alert(chrome.i18n.getMessage('blockurl'));
+    alert(t('blockurl'));
     return false;
   }
   if (!isValidAscii(blockURL)) {
@@ -223,7 +226,7 @@ function validateRule(blockURL, redirectURL) {
 }
 
 function updateStatus(count) {
-  statusElement.textContent = chrome.i18n.getMessage('savedrules', count.toString());
+  statusElement.textContent = t('savedrules', count.toString());
 }
 
 loadRules();

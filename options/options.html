@@ -1,28 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <link rel="stylesheet" href="../styles/options.css" type="text/css" media="all" />
   <title id="options-title">Options page for Block Site Extension</title>
 </head>
+
 <body>
   <h1 id="header-text"></h1>
   <button id="add-rule"></button>
   <table id="rules-table">
     <thead>
       <tr>
-        <th id="block-url-header"></th>
-        <th id="redirect-url-header"></th>
-        <th id="actions-header"></th>
+        <th id="block-url-header" scope="col">Block URL</th>
+        <th id="redirect-url-header" scope="col">Redirect URL</th>
+        <th id="actions-header" scope="col">Actions</th>
       </tr>
     </thead>
     <tbody id="rules-body"></tbody>
   </table>
   <div id="status"></div>
   <p data-i18n="gotopopup">Click the extension icon to return to popup.</p>
-
+  
   <script type="module" src="../scripts/main.js"></script>
   <script type="module" src="../scripts/i18n.js"></script>
   <script type="module" src="./options.js"></script>
 </body>
+
 </html>
