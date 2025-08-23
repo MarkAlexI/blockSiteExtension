@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated translations across all 53 supported locales
 - Applied branding refresh to extension texts
 
+## [2.9.0] - 2025-08-23
+### Changed
+- Optimized logic for managing blocking rules with declarativeNetRequest.
+- Removed reliance on storage change listener: rules are now handled locally in popup/settings.
+- Improved performance: only the new or deleted rule is updated instead of reloading all rules.
+- Ensured consistency: storage is updated only if DNR rule creation succeeds.
+- Rules are automatically refreshed on browser restart and kept in sync across devices.
+
 ## [2.8.4] - 2025-08-19
 
 ### Fixed
