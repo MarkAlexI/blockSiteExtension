@@ -5,11 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.8.5] - 2025-08-21
-
-### Changed
-- Updated translations across all 53 supported locales
-- Applied branding refresh to extension texts
+## [2.9.1] - 2025-08-24
+### Fixed
+- Completed missing translation keys for all locales
 
 ## [2.9.0] - 2025-08-23
 ### Changed
@@ -18,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved performance: only the new or deleted rule is updated instead of reloading all rules.
 - Ensured consistency: storage is updated only if DNR rule creation succeeds.
 - Rules are automatically refreshed on browser restart and kept in sync across devices.
+
+## [2.8.5] - 2025-08-21
+
+### Changed
+- Updated translations across all 53 supported locales
+- Applied branding refresh to extension texts
 
 ## [2.8.4] - 2025-08-19
 
