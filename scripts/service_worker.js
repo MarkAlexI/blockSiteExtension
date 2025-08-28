@@ -1,4 +1,4 @@
-import { normalizeUrlFilter } from './normalizeUrlFilter.js'; 
+import { normalizeUrlFilter } from './normalizeUrlFilter.js';
 
 function createDnrRuleFromStored(storedRule) {
   const filter = normalizeUrlFilter(storedRule.blockURL);
@@ -39,12 +39,16 @@ async function syncDnrFromStorage() {
 }
 
 const showUpdates = (details) => {
-  if (details.reason === 'update') {
-    const version = chrome.runtime.getManifest().version;
-    chrome.tabs.create({
-      url: chrome.runtime.getURL(`update/update.html?version=${version}`)
-    });
-  }
+  chrome.storage.sync.get(['settings'], ({ settings }) => {
+    const showNotifications = settings?.showNotifications === true;
+    
+    if (details.reason === 'update' && showNotifications === true) {
+      const version = chrome.runtime.getManifest().version;
+      chrome.tabs.create({
+        url: chrome.runtime.getURL(`update/update.html?version=${version}`)
+      });
+    }
+  });
 };
 
 chrome.runtime.onStartup.addListener(syncDnrFromStorage);
