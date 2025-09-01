@@ -1,5 +1,6 @@
 import { RulesManager } from '../rules/rulesManager.js';
 import { SettingsManager } from '../options/settings.js';
+import { StatisticsManager } from '../pro/statisticsManager.js';
 
 const rulesManager = new RulesManager();
 
@@ -115,6 +116,38 @@ async function validateDnrIntegrity() {
   }
 }
 
+async function trackBlockedPage(url) {
+  try {
+    const extensionUrl = chrome.runtime.getURL('');
+    
+    if (url.startsWith(extensionUrl) && url.includes('blocked.html')) {
+      const urlObj = new URL(url);
+      const blockedUrl = urlObj.searchParams.get('url') ||
+        urlObj.searchParams.get('blocked') ||
+        urlObj.searchParams.get('site');
+      
+      if (blockedUrl) {
+        console.log(`Recording block: ${blockedUrl}`);
+        await StatisticsManager.recordBlock(blockedUrl);
+      }
+    }
+  } catch (error) {
+    console.error('Error tracking blocked page:', error);
+  }
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && changeInfo.url) {
+    await trackBlockedPage(changeInfo.url);
+  }
+});
+
+chrome.tabs.onCreated.addListener(async (tab) => {
+  if (tab.url && tab.url !== 'about:blank' && tab.url !== 'chrome://newtab/') {
+    await trackBlockedPage(tab.url);
+  }
+});
+
 chrome.runtime.onStartup.addListener(async () => {
   console.log("Extension startup - syncing DNR rules");
   await syncDnrFromStorage();
@@ -128,5 +161,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   console.log("Extension installed/updated - syncing DNR rules");
   await syncDnrFromStorage();
   await SettingsManager.getSettings();
+  await StatisticsManager.getStatistics();
   await showUpdates(details);
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'close_current_tab') {
+    if (sender.tab && sender.tab.id) {
+      chrome.tabs.remove(sender.tab.id);
+    }
+  }
+
+  if (message.type === 'record_block') {
+    StatisticsManager.recordBlock(message.url);
+  }
 });
