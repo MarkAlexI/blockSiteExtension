@@ -20,6 +20,11 @@ class OptionsPage {
   async init() {
     this.initializeUI();
     this.setupEventListeners();
+    
+    this.settingsManager.setRulesUpdatedCallback(() => {
+      this.loadRules();
+    });
+    
     await ProManager.initializeProFeatures();
     this.loadRules();
   }
@@ -160,7 +165,7 @@ class OptionsPage {
       }
     }
   }
-
+  
   cleanup() {
     this.rulesUI.cleanup();
   }
@@ -170,4 +175,10 @@ const optionsPage = new OptionsPage();
 
 window.addEventListener('beforeunload', () => {
   optionsPage.cleanup();
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'reload_rules') {
+    optionsPage.loadRules();
+  }
 });
