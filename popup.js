@@ -84,6 +84,12 @@ class PopupPage {
   }
   
   setupEventListeners() {
+    const optionsLink = document.getElementById('options-link');
+    optionsLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.openOptionsPage();
+    });
+    
     const donateButton = document.getElementById('donate-button');
     const donateURL = 'https://revolut.me/markalexi';
     
@@ -106,6 +112,15 @@ class PopupPage {
         this.loadSecurityMode();
       }
     });
+  }
+  
+  openOptionsPage() {
+    if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+    } else {
+      const optionsUrl = chrome.runtime.getURL('options/options.html');
+      chrome.tabs.create({ url: optionsUrl });
+    }
   }
   
   openFeedbackEmail() {
