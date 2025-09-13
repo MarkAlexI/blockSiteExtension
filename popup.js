@@ -114,12 +114,35 @@ class PopupPage {
     });
   }
   
-  openOptionsPage() {
+  async openOptionsPage() {
+    const currentTab = await chrome.tabs.getCurrent();
+    
     if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage();
+      try {
+        await chrome.runtime.openOptionsPage();
+        
+        const tabs = await chrome.tabs.query({ currentWindow: true });
+        const optionsTab = tabs[tabs.length - 1];
+        if (optionsTab && optionsTab.url.includes('options.html')) {
+          await chrome.tabs.update(optionsTab.id, { active: true });
+        }
+      } catch (error) {
+        console.info('Error with openOptionsPage:', error);
+        
+        const optionsUrl = chrome.runtime.getURL('options/options.html');
+        const newTab = await chrome.tabs.create({ url: optionsUrl });
+        await chrome.tabs.update(newTab.id, { active: true });
+      }
     } else {
       const optionsUrl = chrome.runtime.getURL('options/options.html');
-      chrome.tabs.create({ url: optionsUrl });
+      const newTab = await chrome.tabs.create({ url: optionsUrl });
+      await chrome.tabs.update(newTab.id, { active: true });
+    }
+    
+    if (currentTab && currentTab.id) {
+      setTimeout(() => {
+        chrome.tabs.remove(currentTab.id).catch(err => console.error('Error closing popup tab:', err));
+      }, 200);
     }
   }
   
