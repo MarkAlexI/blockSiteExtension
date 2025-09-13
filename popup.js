@@ -399,3 +399,13 @@ const popupPage = new PopupPage();
 window.addEventListener('beforeunload', () => {
   popupPage.cleanup();
 });
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'pro_status_changed') {
+    console.log(`Pro status changed: ${message.isPro}`);
+    
+    ProManager.updateProFeaturesVisibility(message.isPro);
+    
+    sendResponse({ received: true });
+  }
+});

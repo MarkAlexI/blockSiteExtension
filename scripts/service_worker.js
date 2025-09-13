@@ -1,6 +1,7 @@
 import { RulesManager } from '../rules/rulesManager.js';
 import { SettingsManager } from '../options/settings.js';
 import { StatisticsManager } from '../pro/statisticsManager.js';
+import { ProManager } from '../pro/proManager.js';
 
 const rulesManager = new RulesManager();
 
@@ -14,15 +15,15 @@ async function syncDnrFromStorage() {
     }
     
     const dnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-
-    const missing = rules.filter(storedRule => 
+    
+    const missing = rules.filter(storedRule =>
       !dnrRules.some(dnrRule => dnrRule.id === storedRule.id)
     );
-
-    const extra = dnrRules.filter(dnrRule => 
+    
+    const extra = dnrRules.filter(dnrRule =>
       !rules.some(storedRule => storedRule.id === dnrRule.id)
     );
-
+    
     if (missing.length) {
       const addRules = [];
       for (const rule of missing) {
@@ -40,7 +41,7 @@ async function syncDnrFromStorage() {
         console.log(`Synced ${addRules.length} missing DNR rules`);
       }
     }
-
+    
     if (extra.length) {
       const removeRuleIds = extra.map(rule => rule.id);
       await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds });
@@ -49,7 +50,7 @@ async function syncDnrFromStorage() {
     
   } catch (error) {
     console.error("DNR sync error:", error);
-
+    
     try {
       console.log("Attempting full migration...");
       await rulesManager.migrateRules();
@@ -102,8 +103,7 @@ async function validateDnrIntegrity() {
     const storageIds = new Set(rules.map(r => r.id));
     const dnrIds = new Set(dnrRules.map(r => r.id));
     
-    const isInSync = storageIds.size === dnrIds.size && 
-                   [...storageIds].every(id => dnrIds.has(id));
+    const isInSync = storageIds.size === dnrIds.size && [...storageIds].every(id => dnrIds.has(id));
     
     if (!isInSync) {
       console.warn("DNR rules out of sync, triggering sync...");
@@ -137,6 +137,39 @@ async function trackBlockedPage(url) {
   }
 }
 
+async function handleProStatusUpdate(isPro, subscriptionData = {}) {
+  try {
+    console.log(`Service worker received Pro status update: ${isPro}`);
+    const updatedCredentials = await ProManager.setProStatusFromWorker(isPro, subscriptionData);
+    console.log('Pro status updated successfully:', updatedCredentials);
+    return updatedCredentials;
+  } catch (error) {
+    console.error('Error handling Pro status update:', error);
+    throw error;
+  }
+}
+
+async function checkProStatusExpiry() {
+  try {
+    const credentials = await ProManager.getCredentials();
+    
+    if (credentials.isPro && credentials.expiryDate) {
+      const isExpired = new Date() > new Date(credentials.expiryDate);
+      
+      if (isExpired) {
+        console.log('Pro subscription expired, updating status');
+        await ProManager.setProStatusFromWorker(false);
+        return false;
+      }
+    }
+    
+    return credentials.isPro;
+  } catch (error) {
+    console.error('Error checking Pro status expiry:', error);
+    return false;
+  }
+}
+
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && changeInfo.url) {
     await trackBlockedPage(changeInfo.url);
@@ -152,7 +185,9 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 chrome.runtime.onStartup.addListener(async () => {
   console.log("Extension startup - syncing DNR rules");
   await syncDnrFromStorage();
-
+  
+  await checkProStatusExpiry();
+  
   setTimeout(async () => {
     await validateDnrIntegrity();
   }, 5000);
@@ -172,8 +207,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.tabs.remove(sender.tab.id);
     }
   }
-
+  
   if (message.type === 'record_block') {
     StatisticsManager.recordBlock(message.url);
   }
+  
+  if (message.type === 'update_pro_status') {
+    handleProStatusUpdate(message.isPro, message.subscriptionData)
+      .then(result => {
+        sendResponse({ success: true, credentials: result });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+  
+  if (message.type === 'check_pro_status') {
+    ProManager.isPro()
+      .then(isPro => {
+        sendResponse({ isPro });
+      })
+      .catch(error => {
+        sendResponse({ isPro: false, error: error.message });
+      });
+    return true;
+  }
+  
+  if (message.type === 'get_pro_credentials') {
+    ProManager.getCredentials()
+      .then(credentials => {
+        sendResponse({ credentials });
+      })
+      .catch(error => {
+        sendResponse({ credentials: ProManager.defaultCredentials, error: error.message });
+      });
+    return true;
+  }
+});
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'check_pro_expiry') {
+    await checkProStatusExpiry();
+  }
+});
+
+chrome.alarms.create('check_pro_expiry', {
+  delayInMinutes: 30,
+  periodInMinutes: 30
 });

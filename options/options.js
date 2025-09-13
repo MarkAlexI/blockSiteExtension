@@ -181,4 +181,12 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'reload_rules') {
     optionsPage.loadRules();
   }
+  
+  if (message.type === 'pro_status_changed') {
+    console.log(`Pro status changed: ${message.isPro}`);
+    
+    ProManager.updateProFeaturesVisibility(message.isPro);
+    
+    sendResponse({ received: true });
+  }
 });
