@@ -150,6 +150,8 @@ class PopupPage {
       
       const rules = migrationResult.rules || await this.rulesManager.getRules();
       
+      this.rulesContainer.innerHTML = '';
+      
       rules.forEach(rule => {
         this.createRuleInputs(rule.blockURL, rule.redirectURL, rule.id);
       });
@@ -401,6 +403,10 @@ window.addEventListener('beforeunload', () => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'reload_rules') {
+    popupPage.loadRules();
+  }
+  
   if (message.type === 'pro_status_changed') {
     console.log(`Pro status changed: ${message.isPro}`);
     

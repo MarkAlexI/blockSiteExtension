@@ -17,6 +17,10 @@ export class RulesManager {
   }
   
   async saveRules(rules) {
+    chrome.runtime.sendMessage({
+      type: 'reload_rules'
+    });
+    
     return new Promise((resolve) => {
       chrome.storage.sync.set({ rules }, resolve);
     });
@@ -63,9 +67,7 @@ export class RulesManager {
     
     const filter = normalizeUrlFilter(blockURL.trim());
     const urlFilter = `||${filter}`;
-    const action = redirectURL.trim() ?
-      { type: "redirect", redirect: { url: redirectURL.trim() } } :
-      { type: "redirect", redirect: { url: this.defaultRedirectURL } };
+    const action = redirectURL.trim() ? { type: "redirect", redirect: { url: redirectURL.trim() } } : { type: "redirect", redirect: { url: this.defaultRedirectURL } };
     
     return {
       id: newId,
@@ -131,13 +133,13 @@ export class RulesManager {
       await chrome.declarativeNetRequest.updateDynamicRules({
         removeRuleIds: [oldRule.id]
       });
-
+      
       const newDnrRule = await this.createDNRRule(newBlockURL, newRedirectURL);
       
       await chrome.declarativeNetRequest.updateDynamicRules({
         addRules: [newDnrRule]
       });
-
+      
       rules[index] = {
         id: newDnrRule.id,
         blockURL: newBlockURL.trim(),
@@ -191,7 +193,7 @@ export class RulesManager {
   
   async migrateRules() {
     const rules = await this.getRules();
-
+    
     if (!rules.some(rule => !rule.id)) {
       return { migrated: false, rules };
     }
@@ -201,13 +203,11 @@ export class RulesManager {
       await chrome.declarativeNetRequest.updateDynamicRules({
         removeRuleIds: oldDnrRules.map(r => r.id)
       });
-
+      
       const newDnrRules = rules.map((rule, i) => {
         const filter = normalizeUrlFilter(rule.blockURL);
         const urlFilter = `||${filter}`;
-        const action = rule.redirectURL ?
-          { type: "redirect", redirect: { url: rule.redirectURL } } :
-          { type: "redirect", redirect: { url: this.defaultRedirectURL } };
+        const action = rule.redirectURL ? { type: "redirect", redirect: { url: rule.redirectURL } } : { type: "redirect", redirect: { url: this.defaultRedirectURL } };
         
         return {
           id: i + 1,
@@ -220,7 +220,7 @@ export class RulesManager {
       await chrome.declarativeNetRequest.updateDynamicRules({
         addRules: newDnrRules
       });
-
+      
       const migratedRules = newDnrRules.map((dnrRule, i) => ({
         id: dnrRule.id,
         blockURL: rules[i].blockURL,

@@ -244,6 +244,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   }
+  
+  if (message.type === 'reload_rules') {
+    console.log('Rules updated.');
+  }
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
