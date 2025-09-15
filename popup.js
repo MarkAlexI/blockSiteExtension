@@ -21,7 +21,7 @@ class PopupPage {
     this.currentModeElement = document.getElementById('current-mode');
     
     this.thisTabs = [];
-
+    
     this.isPro = false;
     this.isLegacyUser = true;
     
@@ -33,7 +33,7 @@ class PopupPage {
     this.setupEventListeners();
     await this.loadSecurityMode();
     await this.loadCurrentTabs();
-
+    
     try {
       this.isPro = await ProManager.isPro();
       this.isLegacyUser = await ProManager.isLegacyUser();
@@ -424,12 +424,11 @@ class PopupPage {
         deleteButton,
         async () => {
             try {
-              await this.rulesManager.deleteRuleByData(blockURL, redirectURL);
-              
-              const updatedRules = await this.rulesManager.getRules();
-              this.updateStatus(updatedRules.length);
-              
               if (blockURL) {
+                await this.rulesManager.deleteRuleByData(blockURL, redirectURL);
+                
+                const updatedRules = await this.rulesManager.getRules();
+                this.updateStatus(updatedRules.length);
                 customAlert('- 1');
               }
               ruleDiv.remove();
