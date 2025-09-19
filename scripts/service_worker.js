@@ -48,58 +48,37 @@ if (chrome.contextMenus) {
   });
 }
 
-async function syncDnrFromStorage() {
+async function updateActiveRules() {
   try {
     const rules = await rulesManager.getRules();
+    const currentDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
     
-    if (!rules || !rules.length) {
-      await clearAllDnrRules();
-      return;
-    }
+    const activeRules = rules.filter(rule => rulesManager.isRuleActiveNow(rule));
+    const inactiveRules = rules.filter(rule => !rulesManager.isRuleActiveNow(rule));
     
-    const dnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-    
-    const missing = rules.filter(storedRule =>
-      !dnrRules.some(dnrRule => dnrRule.id === storedRule.id)
-    );
-    
-    const extra = dnrRules.filter(dnrRule =>
-      !rules.some(storedRule => storedRule.id === dnrRule.id)
-    );
-    
-    if (missing.length) {
-      const addRules = [];
-      for (const rule of missing) {
-        try {
-          const dnrRule = await rulesManager.createDNRRule(rule.blockURL, rule.redirectURL);
-          dnrRule.id = rule.id;
-          addRules.push(dnrRule);
-        } catch (error) {
-          console.warn(`Failed to create DNR rule for ${rule.blockURL}:`, error);
-        }
-      }
-      
-      if (addRules.length) {
-        await chrome.declarativeNetRequest.updateDynamicRules({ addRules });
-        console.log(`Synced ${addRules.length} missing DNR rules`);
-      }
-    }
-    
-    if (extra.length) {
-      const removeRuleIds = extra.map(rule => rule.id);
+    const removeRuleIds = inactiveRules
+      .map(rule => rule.id)
+      .filter(id => currentDnrRules.some(dnr => dnr.id === id));
+    if (removeRuleIds.length) {
       await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds });
-      console.log(`Removed ${removeRuleIds.length} extra DNR rules`);
+      console.log(`Removed ${removeRuleIds.length} inactive scheduled rules`);
+    }
+    
+    const addRules = [];
+    for (const rule of activeRules) {
+      if (!currentDnrRules.some(dnr => dnr.id === rule.id)) {
+        const dnrRule = await rulesManager.createDNRRule(rule.blockURL, rule.redirectURL);
+        dnrRule.id = rule.id;
+        addRules.push(dnrRule);
+      }
+    }
+    if (addRules.length) {
+      await chrome.declarativeNetRequest.updateDynamicRules({ addRules });
+      console.log(`Added ${addRules.length} active scheduled rules`);
     }
     
   } catch (error) {
-    console.error("DNR sync error:", error);
-    
-    try {
-      console.log("Attempting full migration...");
-      await rulesManager.migrateRules();
-    } catch (migrationError) {
-      console.error("Migration failed:", migrationError);
-    }
+    console.error("Error updating active rules:", error);
   }
 }
 
@@ -228,8 +207,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   console.log("Extension startup - syncing DNR rules");
-  await syncDnrFromStorage();
-  
+  await updateActiveRules();
   await checkProStatusExpiry();
   
   setTimeout(async () => {
@@ -239,7 +217,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log("Extension installed/updated - syncing DNR rules");
-  await syncDnrFromStorage();
+  await updateActiveRules();
   await SettingsManager.getSettings();
   await StatisticsManager.getStatistics();
   await showUpdates(details);
@@ -274,7 +252,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.type === 'close_current_tab') {
     if (sender.tab && sender.tab.id) {
       chrome.tabs.remove(sender.tab.id);
@@ -319,6 +297,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.type === 'reload_rules') {
+    await updateActiveRules();
     console.log('Rules updated.');
   }
   
@@ -332,9 +311,17 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const isPro = await checkProStatusExpiry();
     await updateContextMenu(isPro);
   }
+  
+  if (alarm.name === 'update_scheduled_rules') {
+    await updateActiveRules();
+  }
 });
 
 chrome.alarms.create('check_pro_expiry', {
   delayInMinutes: 30,
   periodInMinutes: 30
+});
+
+chrome.alarms.create('update_scheduled_rules', {
+  periodInMinutes: 1
 });
