@@ -260,12 +260,12 @@ chrome.runtime.onStartup.addListener(async () => {
 
 async function initializeExtension(details) {
   console.log("Initializing extension state (rules, settings, legacy status)...");
-
+  
   await updateActiveRules();
   await SettingsManager.getSettings();
   await StatisticsManager.getStatistics();
   await showUpdates(details);
-
+  
   try {
     const credentials = await ProManager.getCredentials();
     
@@ -302,9 +302,12 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     console.log("This is a fresh install. Checking permissions...");
     try {
-      const granted = await chrome.permissions.contains({
-        origins: ["*://*/"]
-      });
+      let granted;
+      if (chrome.permissions) {
+        granted = await chrome.permissions.contains({
+          origins: ["*://*/"]
+        });
+      }
       
       if (granted) {
         console.log("Host permission already granted.");
