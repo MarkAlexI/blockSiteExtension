@@ -31,7 +31,7 @@ async function syncLicenseKeyStatus() {
     if (!response.ok) {
       throw new Error(data.error || 'Invalid key');
     }
-
+    
     await handleProStatusUpdate(data.isPro, {
       licenseKey: currentKey,
       subscriptionEmail: data.email,
@@ -43,7 +43,7 @@ async function syncLicenseKeyStatus() {
     
   } catch (error) {
     console.error('License Sync: Error:', error.message);
-
+    
     return { success: false, isPro: credentials.isPro };
   }
 }
@@ -258,13 +258,14 @@ chrome.runtime.onStartup.addListener(async () => {
   }, 5000);
 });
 
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log("Extension installed/updated - syncing DNR rules");
+async function initializeExtension(details) {
+  console.log("Initializing extension state (rules, settings, legacy status)...");
+
   await updateActiveRules();
   await SettingsManager.getSettings();
   await StatisticsManager.getStatistics();
   await showUpdates(details);
-  
+
   try {
     const credentials = await ProManager.getCredentials();
     
@@ -292,6 +293,40 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     await updateContextMenu(isPro);
   } catch (error) {
     console.info('Error handling install/update for legacy:', error);
+  }
+}
+
+chrome.runtime.onInstalled.addListener(async (details) => {
+  console.log(`Extension event: ${details.reason}`);
+  
+  if (details.reason === 'install') {
+    console.log("This is a fresh install. Checking permissions...");
+    try {
+      const granted = await chrome.permissions.contains({
+        origins: ["*://*/"]
+      });
+      
+      if (granted) {
+        console.log("Host permission already granted.");
+        await initializeExtension(details);
+      } else {
+        console.log("Host permission NOT granted. Opening onboarding page.");
+        chrome.tabs.create({
+          url: chrome.runtime.getURL('onboarding/onboarding.html')
+        });
+      }
+    } catch (err) {
+      console.error("Error checking permissions:", err);
+      await showUpdates(details);
+    }
+    
+  } else if (details.reason === 'update') {
+    console.log("This is an update. Assuming permissions are granted.");
+    await initializeExtension(details);
+  } else if (details.reason === 'chrome_update' || details.reason === 'browser_update') {
+    console.log("Browser updated.");
+  } else if (details.reason === 'shared_module_update') {
+    console.log("Shared module updated.");
   }
 });
 
@@ -359,8 +394,8 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'check_pro_expiry') {
     const isProLocally = await checkProStatusExpiry();
-//    const syncResult = await syncLicenseKeyStatus();
-    await updateContextMenu(isProLocally);//syncResult.isPro);
+    //    const syncResult = await syncLicenseKeyStatus();
+    await updateContextMenu(isProLocally); //syncResult.isPro);
   }
   
   if (alarm.name === 'update_scheduled_rules') {
