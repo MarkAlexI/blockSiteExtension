@@ -12,7 +12,7 @@ function applyTranslations() {
       el.setAttribute('placeholder', t(placeholderKey));
     }
   });
-
+  
   document.title = t('onboarding_title');
 }
 
@@ -21,14 +21,14 @@ applyTranslations();
 document.addEventListener('DOMContentLoaded', () => {
   const grantBtn = document.getElementById('grant-permission-btn');
   const statusMsg = document.getElementById('status-message');
-
+  
   chrome.permissions.contains({ origins: ["*://*/"] }, (hasPermissions) => {
     if (hasPermissions) {
       statusMsg.textContent = t('onboarding_status_success');
       statusMsg.className = 'success';
       statusMsg.style.display = 'block';
       grantBtn.style.display = 'none';
-
+      
       chrome.runtime.sendMessage({ type: 'permissions_granted' }, () => {
         setTimeout(() => {
           window.close();
@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   });
-
+  
   grantBtn.addEventListener('click', async () => {
     grantBtn.disabled = true;
     
@@ -53,7 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         chrome.runtime.sendMessage({ type: 'permissions_granted' }, () => {
           setTimeout(() => {
-            window.close();
+            chrome.runtime.sendMessage({
+              type: 'close_current_tab'
+            });
           }, 3000);
         });
       } else {
