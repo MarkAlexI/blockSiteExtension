@@ -296,38 +296,43 @@ async function initializeExtension(details) {
   }
 }
 
+async function checkAndRequestPermissions() {
+  try {
+    let granted;
+    if (chrome.permissions) {
+      granted = await chrome.permissions.contains({
+        origins: ["*://*/"]
+      });
+    }
+    
+    if (granted) {
+      console.log("Host permission already granted.");
+      await initializeExtension(details);
+    } else {
+      console.log("Host permission NOT granted. Opening onboarding page.");
+      chrome.tabs.create({
+        url: chrome.runtime.getURL('onboarding/onboarding.html')
+      });
+    }
+  } catch (err) {
+    console.error("Error checking permissions:", err);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log(`Extension event: ${details.reason}`);
   
   if (details.reason === 'install') {
     console.log("This is a fresh install. Checking permissions...");
-    try {
-      let granted;
-      if (chrome.permissions) {
-        granted = await chrome.permissions.contains({
-          origins: ["*://*/"]
-        });
-      }
-      
-      if (granted) {
-        console.log("Host permission already granted.");
-        await initializeExtension(details);
-      } else {
-        console.log("Host permission NOT granted. Opening onboarding page.");
-        chrome.tabs.create({
-          url: chrome.runtime.getURL('onboarding/onboarding.html')
-        });
-      }
-    } catch (err) {
-      console.error("Error checking permissions:", err);
-      await showUpdates(details);
-    }
-    
+    await initializeExtension(details);
+    await checkAndRequestPermissions();
   } else if (details.reason === 'update') {
     console.log("This is an update. Assuming permissions are granted.");
     await initializeExtension(details);
+    await checkAndRequestPermissions();
   } else if (details.reason === 'chrome_update' || details.reason === 'browser_update') {
     console.log("Browser updated.");
+    await validateDnrIntegrity();
   } else if (details.reason === 'shared_module_update') {
     console.log("Shared module updated.");
   }
