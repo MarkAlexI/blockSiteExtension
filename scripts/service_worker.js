@@ -249,6 +249,9 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  console.log("Browser startup: Running daily update check.");
+  runUpdateCheck();
+  
   console.log("Extension startup - syncing DNR rules");
   await updateActiveRules();
   await checkProStatusExpiry();
@@ -409,6 +412,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'update_scheduled_rules') {
     await updateActiveRules();
   }
+  
+  if (alarm.name === 'check_extension_update') {
+    console.log("Alarm: Running daily update check.");
+    runUpdateCheck();
+  }
 });
 
 chrome.alarms.create('check_pro_expiry', {
@@ -419,3 +427,25 @@ chrome.alarms.create('check_pro_expiry', {
 chrome.alarms.create('update_scheduled_rules', {
   periodInMinutes: 1
 });
+
+chrome.alarms.create('check_extension_update', {
+  delayInMinutes: 60,
+  periodInMinutes: 1440
+});
+
+function runUpdateCheck() {
+  if (typeof chrome.runtime.requestUpdateCheck === 'function') {
+    
+    chrome.runtime.requestUpdateCheck((status, details) => {
+      if (status === 'update_available') {
+        console.log(`Update check: Update available! Version ${details.version}`);
+      } else if (status === 'no_update') {
+        console.log('Update check: No update available.');
+      } else if (status === 'throttled') {
+        console.log('Update check: Throttled. Try again later.');
+      }
+    });
+  } else {
+    console.log('Update check: API (requestUpdateCheck) is not available. (Not Chrome?)');
+  }
+}

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.18] - 2025-10-31
+### Added
+- The extension now periodically checks for updates in the Chrome Web Store — on startup and once per day.
+
 ## [2.16.17] - 2025-10-31
 ### Fixed
 - Improved the `onInstalled` event logic in the background worker:
