@@ -29,6 +29,11 @@ async function syncLicenseKeyStatus() {
     const data = await response.json();
     
     if (!response.ok) {
+      await handleProStatusUpdate(false, {
+        licenseKey: null, 
+        expiryDate: null, 
+        subscriptionEmail: null 
+      });
       throw new Error(data.error || 'Invalid key');
     }
     
@@ -43,7 +48,6 @@ async function syncLicenseKeyStatus() {
     
   } catch (error) {
     console.error('License Sync: Error:', error.message);
-    
     return { success: false, isPro: credentials.isPro };
   }
 }
@@ -302,15 +306,17 @@ async function initializeExtension(details) {
 async function checkAndRequestPermissions() {
   try {
     let granted;
-    if (chrome.permissions) {
+    if (typeof chrome.permissions?.contains === 'function') {
       granted = await chrome.permissions.contains({
         origins: ["*://*/"]
       });
+    } else {
+      console.warn("Permissions API not available. Assuming granted.");
+      granted = true;
     }
     
     if (granted) {
       console.log("Host permission already granted.");
-      await initializeExtension(details);
     } else {
       console.log("Host permission NOT granted. Opening onboarding page.");
       chrome.tabs.create({
@@ -435,7 +441,6 @@ chrome.alarms.create('check_extension_update', {
 
 function runUpdateCheck() {
   if (typeof chrome.runtime.requestUpdateCheck === 'function') {
-    
     chrome.runtime.requestUpdateCheck((status, details) => {
       if (status === 'update_available') {
         console.log(`Update check: Update available! Version ${details.version}`);
