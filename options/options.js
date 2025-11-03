@@ -284,7 +284,8 @@ chrome.runtime.onMessage.addListener((message) => {
     
     ProManager.updateProFeaturesVisibility(message.isPro);
     
-    sendResponse({ received: true });
+    optionsPage.isPro = message.isPro;
+    optionsPage.loadRules();
   }
 });
 
