@@ -7,21 +7,20 @@ export class PasswordUtils {
     const key = await crypto.subtle.importKey(
       'raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
     );
-    const hashBuffer = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: encoder.encode(salt), iterations: 100000, hash: 'SHA-256' },
+    const hashBuffer = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: encoder.encode(salt), iterations: 100000, hash: 'SHA-256' },
       key, 256
     );
     const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     return `${salt}:${hash}`;
   }
-
+  
   static async verifyPassword(input, storedHash) {
     if (!storedHash) return false;
     const [salt, hash] = storedHash.split(':');
     const newHash = await this.hashPassword(input, salt);
     return newHash === storedHash;
   }
-
+  
   static showPasswordModal(type, callback, t) {
     const modal = document.getElementById('passwordModal');
     const title = document.getElementById('modalTitle');
@@ -31,20 +30,30 @@ export class PasswordUtils {
     const forgot = document.getElementById('forgotPassword');
     const confirmBtn = document.getElementById('confirmPassword');
     const cancelBtn = document.getElementById('cancelPassword');
-
+    
     title.textContent = type === 'set' ? t('setpassword') : t('enterpassword');
-    input2.classList.toggle('hidden', type !== 'set');
-    forgot.classList.toggle('hidden', type !== 'set');
-    modal.classList.remove('hidden');
 
+    input2.style.display = (type === 'set') ? 'block' : 'none';
+    forgot.style.display = (type === 'set') ? 'none' : 'block';
+    
+    modal.classList.remove('hidden');
+    input1.focus();
+    
     const closeModal = () => {
       modal.classList.add('hidden');
       input1.value = input2.value = '';
       error.classList.add('hidden');
+
+      input2.style.display = 'none';
+      forgot.style.display = 'none';
+
+      confirmBtn.onclick = null;
+      cancelBtn.onclick = null;
+      forgot.onclick = null;
     };
-
+    
     cancelBtn.onclick = closeModal;
-
+    
     confirmBtn.onclick = async () => {
       error.classList.add('hidden');
       const pass1 = input1.value;
@@ -66,21 +75,21 @@ export class PasswordUtils {
       } else {
         const settings = await chrome.storage.sync.get(['settings']);
         const isValid = await this.verifyPassword(pass1, settings.settings.passwordHash);
-        callback(isValid);
+
+        if (!isValid) {
+          error.textContent = t('invalidpassword');
+          error.classList.remove('hidden');
+          return;
+        }
+        
+        callback(true);
         closeModal();
       }
     };
 
-    forgot.onclick = async () => {
-      if (confirm(t('resetpasswordconfirm'))) {
-        const settings = await chrome.storage.sync.get(['settings']);
-        settings.settings.enablePassword = false;
-        settings.settings.passwordHash = null;
-        await chrome.storage.sync.set({ settings });
-        document.getElementById('enablePassword').checked = false;
-        callback(null);
-        closeModal();
-      }
+    forgot.onclick = () => {
+      alert(t('forgotpasswordinstructions'));
+      closeModal();
     };
   }
 }
