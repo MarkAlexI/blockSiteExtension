@@ -18,7 +18,7 @@
       <p data-i18n="optionsdescription">Configure your extension behavior and security settings</p>
     </header>
     
-    <div class="go-pro hidden">
+    <div class="go-pro">
       <button class="pro-toggle" id="proBtn">
         <span id="proBtnText" data-i18n="getpro">Get Pro</span>
         <i class="chevron"></i>
@@ -58,9 +58,14 @@
             <a href="https://blockdistraction.com/account.html" target="_blank">blockdistraction.com/account.html</a>
             
             <hr />
-            <button id="force-sync-btn" class="link-button">
-              Force Sync / Check Status
-            </button>
+            <div class="pro-action-buttons">
+              <button id="force-sync-btn" class="link-button" data-i18n="forcesync">
+                Force Sync / Check Status
+              </button>
+              <button id="log-out-btn" class="link-button danger" data-i18n="logout">
+                Log Out
+              </button>
+            </div>
           </div>
           
         </div>
@@ -274,7 +279,7 @@
   
   <script type="module" src="../scripts/i18n.js"></script>
   <script type="module" src="./options.js"></script>
-  <!-- <script type="module" src="./goPro.js"></script> -->
+  <script type="module" src="./goPro.js"></script>
 </body>
 
 </html>
