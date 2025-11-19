@@ -28,6 +28,8 @@ class PopupPage {
     this.isLegacyUser = true;
     this.settings = {};
     
+    this.currentRuleCount = 0;
+    
     this.init();
   }
   
@@ -123,7 +125,9 @@ class PopupPage {
     this.addRuleButton.addEventListener('click', async () => {
       if (!this.isPro && !this.isLegacyUser) {
         const rules = await this.rulesManager.getRules();
-        if (rules.length >= MAX_RULES_LIMIT) {
+        this.currentRuleCount = rules.length;
+        
+        if (this.currentRuleCount >= MAX_RULES_LIMIT) {
           customAlert(t('rulelimitreached', MAX_RULES_LIMIT));
           return;
         }
@@ -196,6 +200,8 @@ class PopupPage {
       }
       
       const rules = migrationResult.rules || await this.rulesManager.getRules();
+      
+      this.currentRuleCount = rules.length;
       
       this.rulesContainer.innerHTML = '';
       
@@ -289,15 +295,18 @@ class PopupPage {
       const alreadyExists = rules.some(rule => rule.blockURL === url);
       
       if (!alreadyExists) {
+        if (!this.isPro && !this.isLegacyUser) {
+             if (rules.length >= MAX_RULES_LIMIT) {
+                 customAlert(t('rulelimitreached', MAX_RULES_LIMIT));
+                 return;
+             }
+        }
+
         await this.rulesManager.addRule(url, '');
         
-        const updatedRules = await this.rulesManager.getRules();
-        const newRule = updatedRules.find(rule => rule.blockURL === url);
+        await this.loadRules();
         
-        this.createRuleInputs(url, '', newRule.id);
-        this.updateStatus(updatedRules.length);
         customAlert('+ 1');
-        
         closeTabsMatchingRule(url);
         button.remove();
       }
@@ -322,42 +331,45 @@ class PopupPage {
     redirectURL.placeholder = t('redirecturl');
     redirectURL.value = redirectURLValue;
     
-    const showButtons = this.isPro || this.isLegacyUser;
+    let showButtons = true; 
     
+    if (!blockURLValue) {
+         const isFreeUser = !this.isPro && !this.isLegacyUser;
+         if (isFreeUser && this.currentRuleCount >= MAX_RULES_LIMIT) {
+             showButtons = false;
+         }
+    }
+
     setTimeout(() => {
       ruleDiv.appendChild(blockURL);
       ruleDiv.appendChild(redirectURL);
       
       if (!blockURLValue) {
+        // НОВЕ ПРАВИЛО
         if (showButtons) {
           const saveButton = this.createSaveButton(blockURL, redirectURL, ruleDiv);
           ruleDiv.appendChild(saveButton);
         } else {
-          const proMessage = document.createElement('span');
-          proMessage.textContent = t('proonlyactions');
-          proMessage.className = 'pro-message';
-          ruleDiv.appendChild(proMessage);
+           const proMessage = document.createElement('span');
+           proMessage.textContent = t('proonlyactions') || 'Upgrade to add more';
+           proMessage.className = 'pro-message';
+           ruleDiv.appendChild(proMessage);
         }
       } else {
         this.makeInputReadOnly(blockURL);
         this.makeInputReadOnly(redirectURL);
       }
-      
-      if (showButtons) {
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'delete-btn';
-        deleteButton.textContent = t('deletebtn');
-        
-        deleteButton.addEventListener('click', async () => {
-          await this.handleRuleDeletion(deleteButton, blockURL.value, redirectURL.value, ruleDiv);
-        });
-        
-        ruleDiv.appendChild(deleteButton);
-      } else {
-        const proMessage = document.createElement('span');
-        proMessage.textContent = t('proonlyactions');
-        proMessage.className = 'pro-message';
-        ruleDiv.appendChild(proMessage);
+
+      if (blockURLValue || (showButtons && !blockURLValue)) {
+          const deleteButton = document.createElement('button');
+          deleteButton.className = 'delete-btn';
+          deleteButton.textContent = t('deletebtn');
+          
+          deleteButton.addEventListener('click', async () => {
+            await this.handleRuleDeletion(deleteButton, blockURL.value, redirectURL.value, ruleDiv);
+          });
+          
+          ruleDiv.appendChild(deleteButton);
       }
       
       this.rulesContainer.insertAdjacentElement('afterbegin', ruleDiv);
@@ -378,6 +390,14 @@ class PopupPage {
   
   async saveNewRule(blockURL, redirectURL, ruleDiv, saveButton) {
     try {
+      if (!this.isPro && !this.isLegacyUser) {
+         const currentRules = await this.rulesManager.getRules();
+         if (currentRules.length >= MAX_RULES_LIMIT) {
+             customAlert(t('rulelimitreached', MAX_RULES_LIMIT));
+             return; 
+         }
+      }
+
       const rules = await this.rulesManager.getRules();
       const ruleExists = rules.some(rule =>
         rule.blockURL === blockURL.value.trim() && rule.redirectURL === redirectURL.value.trim()
@@ -393,12 +413,21 @@ class PopupPage {
       await this.rulesManager.addRule(blockURL.value, redirectURL.value);
       
       const updatedRules = await this.rulesManager.getRules();
-      this.createRuleInputs();
+      this.currentRuleCount = updatedRules.length;
       this.updateStatus(updatedRules.length);
+
+      ruleDiv.remove(); 
+
+      const newRule = updatedRules.find(r => r.blockURL === blockURL.value.trim());
+      if (newRule) {
+          this.createRuleInputs(newRule.blockURL, newRule.redirectURL, newRule.id);
+      }
+
+      const canAddMore = this.isPro || this.isLegacyUser || (updatedRules.length < MAX_RULES_LIMIT);
       
-      this.makeInputReadOnly(blockURL);
-      this.makeInputReadOnly(redirectURL);
-      saveButton.remove();
+      if (canAddMore) {
+          this.createRuleInputs(); 
+      }
       
       customAlert('+ 1');
       closeTabsMatchingRule(blockURL.value.trim());
@@ -421,6 +450,11 @@ class PopupPage {
   
   async handleRuleDeletion(deleteButton, blockURL, redirectURL, ruleDiv) {
     try {
+      if (!blockURL) {
+          ruleDiv.remove();
+          return;
+      }
+
       if (this.settings.enablePassword && this.isPro) {
         const isValid = await this.promptForPassword();
         if (!isValid) {
@@ -438,11 +472,22 @@ class PopupPage {
               if (blockURL) {
                 await this.rulesManager.deleteRuleByData(blockURL, redirectURL);
                 
-                const updatedRules = await this.rulesManager.getRules();
-                this.updateStatus(updatedRules.length);
+                await this.loadRules();
+                
+                const rules = await this.rulesManager.getRules();
+                const canAddMore = this.isPro || this.isLegacyUser || (rules.length < MAX_RULES_LIMIT);
+                
+                const firstInput = this.rulesContainer.querySelector('input[type="text"]');
+                const isFirstEmpty = firstInput && !firstInput.value;
+                
+                if (canAddMore && !isFirstEmpty) {
+                     this.createRuleInputs();
+                }
+
                 customAlert('- 1');
+              } else {
+                  ruleDiv.remove();
               }
-              ruleDiv.remove();
               
             } catch (error) {
               console.info("Delete rule error:", error);
@@ -503,6 +548,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     ProManager.updateProFeaturesVisibility(message.isPro);
     popupPage.isPro = message.isPro;
+    
+    popupPage.loadRules();
     
     sendResponse({ received: true });
   }
