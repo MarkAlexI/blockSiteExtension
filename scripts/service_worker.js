@@ -53,27 +53,24 @@ async function syncLicenseKeyStatus() {
 }
 
 async function updateContextMenu(isPro) {
-  if (!chrome.contextMenus) {
-    console.log('contextMenus API not available on this platform');
-    return;
-  }
-  
-  try {
-    await chrome.contextMenus.remove('blockDistraction').catch(() => {});
-    
+  if (!chrome.contextMenus) return;
+
+  chrome.contextMenus.remove('blockDistraction', () => {
+    void chrome.runtime.lastError;
+
     if (isPro) {
-      await chrome.contextMenus.create({
+      chrome.contextMenus.create({
         id: 'blockDistraction',
-        title: 'BlockDistraction',
+        title: 'Block this Link',
         contexts: ['link']
+      }, () => {
+        void chrome.runtime.lastError;
+        console.log('BlockDistraction context menu created');
       });
-      console.log('BlockDistraction context menu created');
     } else {
       console.log('BlockDistraction context menu removed (non-pro mode)');
     }
-  } catch (error) {
-    console.info('Error updating context menu:', error);
-  }
+  });
 }
 
 if (chrome.contextMenus) {

@@ -19,6 +19,20 @@ const logOutBtn = document.getElementById('log-out-btn');
 
 const VERIFY_API_URL = 'https://blockdistraction.com/api/verifyKey';
 
+function sendMessageToWorker(message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        void chrome.runtime.lastError;
+        resolve(response);
+      });
+    } catch (e) {
+      console.warn("Message sending failed:", e);
+      resolve(null);
+    }
+  });
+}
+
 if (wrapper) {
   wrapper.style.maxHeight = '0px';
 }
@@ -104,18 +118,13 @@ if (licenseForm) {
 
       await ProManager.updateProStatus(true, subscriptionData);
 
-      chrome.runtime.sendMessage({ 
+      await sendMessageToWorker({ 
         type: 'update_pro_status', 
         isPro: true, 
         subscriptionData: subscriptionData 
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-             console.warn("Could not send message to background:", chrome.runtime.lastError);
-        } else {
-             console.log("Background worker notified of Pro activation");
-        }
       });
-      
+      console.log("Background worker notified.");
+
       try {
         const settingsResult = await chrome.storage.sync.get(['settings']);
         if (settingsResult.settings && settingsResult.settings.enablePassword) {
@@ -155,30 +164,31 @@ if (licenseForm) {
 }
 
 if (forceSyncBtn) {
-  forceSyncBtn.addEventListener('click', () => {
+  forceSyncBtn.addEventListener('click', async () => {
     forceSyncBtn.disabled = true;
     forceSyncBtn.textContent = 'Syncing...';
     
     licenseMessage.textContent = t('syncing');
     licenseMessage.className = 'status-message success show';
 
-    chrome.runtime.sendMessage({ type: 'force_sync' }, (response) => {
-      forceSyncBtn.disabled = false;
-      forceSyncBtn.textContent = t('forcesync') || 'Force Sync / Check Status';
-      
-      if (response && response.success) {
-        licenseMessage.textContent = t('syncsuccess') + (response.isPro ? ' (Pro Active)' : ' (Free)');
-        licenseMessage.className = 'status-message success show';
-        updateUI();
-      } else {
-        licenseMessage.textContent = t('syncfailed') + (response.error ? `: ${response.error}` : '');
-        licenseMessage.className = 'error-message show';
-      }
-      
-      setTimeout(() => {
-        licenseMessage.className = 'hidden';
-      }, 3000);
-    });
+    const response = await sendMessageToWorker({ type: 'force_sync' });
+    
+    forceSyncBtn.disabled = false;
+    forceSyncBtn.textContent = t('forcesync') || 'Force Sync / Check Status';
+    
+    if (response && response.success) {
+      licenseMessage.textContent = t('syncsuccess') + (response.isPro ? ' (Pro Active)' : ' (Free)');
+      licenseMessage.className = 'status-message success show';
+      updateUI();
+    } else {
+      const errorMsg = (response && response.error) ? response.error : 'No response';
+      licenseMessage.textContent = t('syncfailed') + `: ${errorMsg}`;
+      licenseMessage.className = 'error-message show';
+    }
+    
+    setTimeout(() => {
+      licenseMessage.className = 'hidden';
+    }, 3000);
   });
 }
 
@@ -193,7 +203,7 @@ if (logOutBtn) {
 
       await ProManager.updateProStatus(false, emptyData);
 
-      chrome.runtime.sendMessage({ 
+      await sendMessageToWorker({ 
         type: 'update_pro_status', 
         isPro: false, 
         subscriptionData: emptyData 
