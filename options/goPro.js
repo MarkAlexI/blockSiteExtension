@@ -96,10 +96,24 @@ if (licenseForm) {
         throw new Error(data.error || 'Invalid key');
       }
       
-      await ProManager.updateProStatus(true, {
+      const subscriptionData = {
         licenseKey: key,
         subscriptionEmail: data.email,
         expiryDate: data.expiryDate
+      };
+
+      await ProManager.updateProStatus(true, subscriptionData);
+
+      chrome.runtime.sendMessage({ 
+        type: 'update_pro_status', 
+        isPro: true, 
+        subscriptionData: subscriptionData 
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+             console.warn("Could not send message to background:", chrome.runtime.lastError);
+        } else {
+             console.log("Background worker notified of Pro activation");
+        }
       });
       
       try {
@@ -147,7 +161,7 @@ if (forceSyncBtn) {
     
     licenseMessage.textContent = t('syncing');
     licenseMessage.className = 'status-message success show';
-    
+
     chrome.runtime.sendMessage({ type: 'force_sync' }, (response) => {
       forceSyncBtn.disabled = false;
       forceSyncBtn.textContent = t('forcesync') || 'Force Sync / Check Status';
@@ -171,12 +185,20 @@ if (forceSyncBtn) {
 if (logOutBtn) {
   logOutBtn.addEventListener('click', async () => {
     try {
-      await ProManager.updateProStatus(false, {
+      const emptyData = {
         licenseKey: null,
         subscriptionEmail: null,
         expiryDate: null
+      };
+
+      await ProManager.updateProStatus(false, emptyData);
+
+      chrome.runtime.sendMessage({ 
+        type: 'update_pro_status', 
+        isPro: false, 
+        subscriptionData: emptyData 
       });
-      
+
       await updateUI();
       
       licenseMessage.textContent = t('loggedoutsuccess');

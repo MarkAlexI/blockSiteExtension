@@ -30,9 +30,9 @@ async function syncLicenseKeyStatus() {
     
     if (!response.ok) {
       await handleProStatusUpdate(false, {
-        licenseKey: null, 
-        expiryDate: null, 
-        subscriptionEmail: null 
+        licenseKey: null,
+        expiryDate: null,
+        subscriptionEmail: null
       });
       throw new Error(data.error || 'Invalid key');
     }
@@ -87,6 +87,7 @@ if (chrome.contextMenus) {
       
       try {
         await rulesManager.addRule(info.linkUrl, '');
+        await updateActiveRules();
         console.log('Blocked URL:', info.linkUrl);
       } catch (error) {
         console.info('Error blocking URL:', error);
@@ -256,7 +257,10 @@ chrome.runtime.onStartup.addListener(async () => {
   
   console.log("Extension startup - syncing DNR rules");
   await updateActiveRules();
-  await checkProStatusExpiry();
+  
+  const isPro = await checkProStatusExpiry();
+  console.log('Startup: Pro status is', isPro, '- updating context menu...');
+  await updateContextMenu(isPro);
   
   setTimeout(async () => {
     await validateDnrIntegrity();
@@ -357,7 +361,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     StatisticsManager.recordBlock(message.url);
     return;
   }
-
+  
   if (message.type === 'record_redirect') {
     StatisticsManager.recordRedirect(message.from, message.to);
     return;
