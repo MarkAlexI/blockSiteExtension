@@ -2,6 +2,8 @@ import { RulesManager } from '../rules/rulesManager.js';
 import { SettingsManager } from '../options/settings.js';
 import { StatisticsManager } from '../pro/statisticsManager.js';
 import { ProManager } from '../pro/proManager.js';
+import { closeTabsMatchingRule } from './closeTabs.js';
+import { normalizeUrlFilter } from './normalizeUrlFilter.js';
 
 const rulesManager = new RulesManager();
 const VERIFY_API_URL = 'https://blockdistraction.com/api/verifyKey';
@@ -54,15 +56,15 @@ async function syncLicenseKeyStatus() {
 
 async function updateContextMenu(isPro) {
   if (!chrome.contextMenus) return;
-
+  
   chrome.contextMenus.remove('blockDistraction', () => {
     void chrome.runtime.lastError;
-
+    
     if (isPro) {
       chrome.contextMenus.create({
         id: 'blockDistraction',
-        title: 'Block this Link',
-        contexts: ['link']
+        title: 'Block this Site',
+        contexts: ['page', 'link']
       }, () => {
         void chrome.runtime.lastError;
         console.log('BlockDistraction context menu created');
@@ -82,12 +84,18 @@ if (chrome.contextMenus) {
         return;
       }
       
+      const rawUrl = info.linkUrl || info.pageUrl || tab.url;
+      if (!rawUrl) return;
+      
       try {
-        await rulesManager.addRule(info.linkUrl, '');
-        await updateActiveRules();
-        console.log('Blocked URL:', info.linkUrl);
+        const urlToBlock = normalizeUrlFilter(rawUrl);
+        
+        await rulesManager.addRule(urlToBlock, '');
+        console.log('Blocked URL via Context Menu:', urlToBlock);
+        
+        await closeTabsMatchingRule(urlToBlock);
       } catch (error) {
-        console.info('Error blocking URL:', error);
+        console.info('Error processing context menu block:', error);
       }
     }
   });
@@ -334,6 +342,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.log("This is a fresh install. Checking permissions...");
     await initializeExtension(details);
     await checkAndRequestPermissions();
+    chrome.alarms.create('check_extension_update', { delayInMinutes: 60, periodInMinutes: 1440 });
   } else if (details.reason === 'update') {
     console.log("This is an update. Assuming permissions are granted.");
     await initializeExtension(details);
@@ -352,6 +361,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.tabs.remove(sender.tab.id);
     }
     return;
+  }
+  
+  if (message.type === 'CLOSE_MATCHING_TABS') {
+    closeTabsMatchingRule(message.url)
+      .then(() => sendResponse({ success: true }))
+      .catch((err) => {
+        console.error("Close tabs error:", err);
+        sendResponse({ success: false });
+      });
+    return true;
   }
   
   if (message.type === 'record_block') {
@@ -423,6 +442,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })();
     return true;
+  }
+  
+  if (message.type === 'permissions_granted') {
+    console.log("Permissions granted via onboarding.");
+    updateActiveRules();
   }
 });
 
