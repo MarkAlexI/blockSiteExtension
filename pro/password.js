@@ -31,9 +31,17 @@ export class PasswordUtils {
     const confirmBtn = document.getElementById('confirmPassword');
     const cancelBtn = document.getElementById('cancelPassword');
     
+    input1.type = 'password';
+    input1.value = '';
+    input1.placeholder = t('enterpassword') || 'Enter password';
+    input2.value = '';
+    error.classList.add('hidden');
+    
     title.textContent = type === 'set' ? t('setpassword') : t('enterpassword');
-
+    confirmBtn.textContent = t('modalconfirm');
+    
     input2.style.display = (type === 'set') ? 'block' : 'none';
+    
     forgot.style.display = (type === 'set') ? 'none' : 'block';
     
     modal.classList.remove('hidden');
@@ -43,42 +51,49 @@ export class PasswordUtils {
       modal.classList.add('hidden');
       input1.value = input2.value = '';
       error.classList.add('hidden');
-
-      input2.style.display = 'none';
-      forgot.style.display = 'none';
-
+      
       confirmBtn.onclick = null;
       cancelBtn.onclick = null;
       forgot.onclick = null;
+      input1.onkeydown = null;
     };
     
     cancelBtn.onclick = closeModal;
     
+    input1.onkeydown = (e) => {
+      if (e.key === 'Enter') confirmBtn.click();
+      if (e.key === 'Escape') closeModal();
+    };
+    
     confirmBtn.onclick = async () => {
       error.classList.add('hidden');
-      const pass1 = input1.value;
+      const val1 = input1.value.trim();
+      
       if (type === 'set') {
-        const pass2 = input2.value;
-        if (pass1 !== pass2) {
-          error.textContent = t('passwordmismatch');
+        const val2 = input2.value.trim();
+        if (val1 !== val2) {
+          error.textContent = t('passwordmismatch') || 'Passwords do not match';
           error.classList.remove('hidden');
           return;
         }
-        if (pass1.length < 6) {
-          error.textContent = t('passwordtooshort');
+        if (val1.length < 6) {
+          error.textContent = t('passwordtooshort') || 'Password too short';
           error.classList.remove('hidden');
           return;
         }
-        const hash = await this.hashPassword(pass1);
+        const hash = await this.hashPassword(val1);
         callback(hash);
         closeModal();
       } else {
         const settings = await chrome.storage.sync.get(['settings']);
-        const isValid = await this.verifyPassword(pass1, settings.settings.passwordHash);
-
+        const storedHash = settings.settings ? settings.settings.passwordHash : null;
+        const isValid = await this.verifyPassword(val1, storedHash);
+        
         if (!isValid) {
-          error.textContent = t('invalidpassword');
+          error.textContent = t('invalidpassword') || 'Invalid password';
           error.classList.remove('hidden');
+          input1.classList.add('shake');
+          setTimeout(() => input1.classList.remove('shake'), 500);
           return;
         }
         
@@ -86,10 +101,41 @@ export class PasswordUtils {
         closeModal();
       }
     };
-
-    forgot.onclick = () => {
-      alert(t('forgotpasswordinstructions'));
-      closeModal();
+    
+    forgot.onclick = (e) => {
+      e.preventDefault();
+      
+      title.textContent = t('restoreaccess');
+      input1.value = '';
+      input1.type = 'text';
+      input1.placeholder = 'License Key (BD-PRO-...)';
+      forgot.style.display = 'none';
+      error.classList.add('hidden');
+      confirmBtn.textContent = t('restoreaccess');
+      
+      confirmBtn.onclick = async () => {
+        const enteredKey = input1.value.trim();
+        if (!enteredKey) return;
+        
+        const storage = await chrome.storage.sync.get(['proStatus', 'settings']);
+        const actualKey = storage.proStatus?.licenseKey;
+        
+        if (actualKey && enteredKey === actualKey) {
+          const newSettings = {
+            ...storage.settings,
+            enablePassword: false,
+            passwordHash: null
+          };
+          
+          await chrome.storage.sync.set({ settings: newSettings });
+          
+          alert(t('passwordreset') || 'Password protection has been reset.');
+          window.location.reload();
+        } else {
+          error.textContent = t('subscriptionnotfound') || 'Invalid License Key';
+          error.classList.remove('hidden');
+        }
+      };
     };
   }
 }
