@@ -117,16 +117,16 @@ if (licenseForm) {
         subscriptionEmail: data.email,
         expiryDate: data.expiryDate
       };
-
+      
       await ProManager.updateProStatus(true, subscriptionData);
-
-      await sendMessageToWorker({ 
-        type: 'update_pro_status', 
-        isPro: true, 
-        subscriptionData: subscriptionData 
+      
+      await sendMessageToWorker({
+        type: 'update_pro_status',
+        isPro: true,
+        subscriptionData: subscriptionData
       });
       console.log("Background worker notified.");
-
+      
       try {
         const settingsResult = await chrome.storage.sync.get(['settings']);
         if (settingsResult.settings && settingsResult.settings.enablePassword) {
@@ -174,7 +174,7 @@ if (forceSyncBtn) {
     
     licenseMessage.textContent = t('syncing');
     licenseMessage.className = 'status-message success show';
-
+    
     const response = await sendMessageToWorker({ type: 'force_sync' });
     
     forceSyncBtn.disabled = false;
@@ -215,7 +215,7 @@ if (logOutBtn) {
     } catch (error) {
       console.error("Error checking settings before logout:", error);
     }
-
+    
     try {
       const emptyData = {
         licenseKey: null,
@@ -230,9 +230,9 @@ if (logOutBtn) {
         isPro: false,
         subscriptionData: emptyData
       });
-
+      
       await updateUI();
-
+      
       const settings = await SettingsManager.getSettings();
       if (settings.enablePassword) {
         await SettingsManager.saveSettings({
@@ -265,3 +265,53 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 updateUI();
+
+const proSection = document.getElementById('pro-section');
+
+document.addEventListener('DOMContentLoaded', () => {
+  chrome.storage.local.get(['is_reviewer_mode'], (result) => {
+    if (result.is_reviewer_mode) {
+      proSection.classList.remove('hidden');
+      console.log('Dev/Reviewer mode is active (loaded from storage)');
+    }
+  });
+});
+
+window.unlockPro = () => {
+  proSection.classList.remove('hidden');
+  
+  chrome.storage.local.set({ is_reviewer_mode: true }, () => {
+    console.log('✅ Pro Section Unlocked & Saved!');
+    console.log('To lock it back, run: window.lockPro()');
+  });
+};
+
+window.lockPro = () => {
+  proSection.classList.add('hidden');
+  chrome.storage.local.remove('is_reviewer_mode', () => {
+    console.log('🔒 Pro Section Locked (Storage cleared)');
+  });
+};
+
+const logo = document.getElementById('header-text');
+let pressTimer;
+
+const cancelTimer = () => {
+  if (pressTimer) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+};
+
+logo.addEventListener('pointerdown', (e) => {
+  if (e.button === 0) {
+    pressTimer = setTimeout(() => {
+      window.unlockPro();
+      if (navigator.vibrate) navigator.vibrate(200);
+    }, 7000);
+  }
+});
+
+logo.addEventListener('pointerup', cancelTimer);
+
+logo.addEventListener('pointerleave', cancelTimer);
