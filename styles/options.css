@@ -57,7 +57,11 @@ header h1 {
   font-size: clamp(1.75rem, 4vw, 2.5rem);
   font-weight: 700;
   margin-bottom: 0.625rem;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 header p {
@@ -313,7 +317,7 @@ th {
 }
 
 .rule-row:hover td {
-  background: rgba(102, 126, 234, 0.1); 
+  background: rgba(102, 126, 234, 0.1);
 }
 
 .rule-row td:nth-child(3) {
