@@ -22,9 +22,6 @@ class PopupPage {
     this.currentModeElement = document.getElementById('current-mode');
     
     this.thisTabs = [];
-    
-    this.isPro = false;
-    this.isLegacyUser = true;
     this.settings = {};
     
     this.currentRuleCount = 0;
@@ -141,35 +138,21 @@ class PopupPage {
     });
   }
   
-  async openOptionsPage() {
-    const currentTab = await chrome.tabs.getCurrent();
-    
-    if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
-      try {
-        await chrome.runtime.openOptionsPage();
-        
-        const tabs = await chrome.tabs.query({ currentWindow: true });
-        const optionsTab = tabs[tabs.length - 1];
-        if (optionsTab && optionsTab.url.includes('options.html')) {
-          await chrome.tabs.update(optionsTab.id, { active: true });
-        }
-      } catch (error) {
-        console.info('Error with openOptionsPage:', error);
-        
-        const optionsUrl = chrome.runtime.getURL('options/options.html');
-        const newTab = await chrome.tabs.create({ url: optionsUrl });
-        await chrome.tabs.update(newTab.id, { active: true });
-      }
-    } else {
-      const optionsUrl = chrome.runtime.getURL('options/options.html');
-      const newTab = await chrome.tabs.create({ url: optionsUrl });
-      await chrome.tabs.update(newTab.id, { active: true });
-    }
-    
-    if (currentTab && currentTab.id) {
+  openOptionsPage() {
+    const closePopup = () => {
       setTimeout(() => {
-        chrome.tabs.remove(currentTab.id).catch(err => console.error('Error closing popup tab:', err));
-      }, 200);
+        window.close();
+      }, 100);
+    };
+    
+    if (chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage(() => {
+        closePopup();
+      });
+    } else {
+      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }, () => {
+        closePopup();
+      });
     }
   }
   
