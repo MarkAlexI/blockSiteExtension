@@ -9,6 +9,8 @@ export function isBlockedURL(tabs) {
     /^https:\/\/chromewebstore\.google\.com/,
     /^edge:\/\//,
     /^kiwi:\/\//,
+    /^kiwi-extension:\/\//,
+    /^devtools:/
   ];
   
   return blockedPatterns.some(pattern => pattern.test(url));
