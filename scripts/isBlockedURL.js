@@ -23,7 +23,9 @@ export function isBlockedURL(tabs) {
     /^edge:\/\//,
     /^kiwi:\/\//,
     /^kiwi-extension:\/\//,
-    /^devtools:/
+    /^devtools:/,
+    /^view-source:/,
+    /^data:/
   ];
   
   return blockedPatterns.some(pattern => pattern.test(url));
