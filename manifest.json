@@ -6,7 +6,7 @@
   "author": "MarkAlexI",
   "homepage_url": "https://ext.pp.ua/blocksite.html",
   "default_locale": "en",
-  "version": "2.19.2",
+  "version": "2.19.3",
   "icons": {
     "16": "images/icon-16.png",
     "32": "images/icon-32.png",
@@ -41,7 +41,10 @@
       "scripts/blocked.js",
       "redirect.html",
       "styles/redirect.css",
-      "scripts/redirect.js"
+      "scripts/redirect.js",
+      "onboarding/onboarding.html",
+      "onboarding/onboarding.css",
+      "onboarding/onboarding.js"
     ],
     "matches": ["<all_urls>"]
   }],
