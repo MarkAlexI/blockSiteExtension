@@ -177,7 +177,7 @@ async function clearAllDnrRules() {
 }
 
 async function showUpdates(details) {
-  return true;
+  // return true;
   try {
     const settings = await SettingsManager.getSettings();
     
@@ -349,6 +349,12 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     Logger.log("This is a fresh install. Checking permissions...");
     await initializeExtension(details);
     await checkAndRequestPermissions();
+    
+    chrome.tabs.create({
+      url: "https://blockdistraction.com",
+      active: true
+    });
+    
     chrome.alarms.create('check_extension_update', { delayInMinutes: 60, periodInMinutes: 1440 });
   } else if (details.reason === 'update') {
     Logger.log("This is an update. Assuming permissions are granted.");
