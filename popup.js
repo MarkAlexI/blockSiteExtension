@@ -320,6 +320,8 @@ class PopupPage {
     blockURL.placeholder = t('blockurl');
     blockURL.value = blockURLValue;
     
+    requestAnimationFrame(() => blockURL.focus());
+    
     const redirectURL = document.createElement('input');
     redirectURL.type = 'text';
     redirectURL.placeholder = t('redirecturl');
@@ -339,7 +341,6 @@ class PopupPage {
       ruleDiv.appendChild(redirectURL);
       
       if (!blockURLValue) {
-        // НОВЕ ПРАВИЛО
         if (showButtons) {
           const saveButton = this.createSaveButton(blockURL, redirectURL, ruleDiv);
           ruleDiv.appendChild(saveButton);
