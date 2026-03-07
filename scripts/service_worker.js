@@ -8,6 +8,7 @@ import { normalizePathRule } from '../rules/normalizePathRule.js';
 import Logger from '../utils/logger.js';
 import { resolveContextTarget } from '../utils/resolveContextTarget.js';
 import { VERIFY_API_URL } from '../utils/constants.js';
+import { updateUninstallURL } from '../utils/updateUninstallURL.js';
 
 const logger = new Logger('Worker');
 const rulesManager = new RulesManager();
@@ -482,6 +483,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'check_pro_expiry') {
+    await updateUninstallURL();
     const syncResult = await syncLicenseKeyStatus();
     await updateContextMenu(syncResult.isPro);
   }
@@ -497,7 +499,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 chrome.alarms.create('check_pro_expiry', {
-  delayInMinutes: 30,
+  delayInMinutes: 3,
   periodInMinutes: 1440
 });
 
