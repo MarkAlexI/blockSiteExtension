@@ -497,7 +497,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 chrome.alarms.create('check_pro_expiry', {
-  delayInMinutes: 3,
+  delayInMinutes: .5,
   periodInMinutes: 1440
 });
 
@@ -515,6 +515,7 @@ function runUpdateCheck() {
     chrome.runtime.requestUpdateCheck((status, details) => {
       if (status === 'update_available') {
         logger.log(`Update check: Update available! Version ${details.version}`);
+        chrome.runtime.reload();
       } else if (status === 'no_update') {
         logger.log('Update check: No update available.');
       } else if (status === 'throttled') {
