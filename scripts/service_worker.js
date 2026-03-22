@@ -10,6 +10,7 @@ import { resolveContextTarget } from '../utils/resolveContextTarget.js';
 import { VERIFY_API_URL, IS_FIREFOX } from '../utils/constants.js';
 import { updateUninstallURL } from '../utils/updateUninstallURL.js';
 import { createInstallURL } from '../utils/createInstallURL.js';
+import { shouldSkipSync } from '../utils/shouldSkipSync.js';
 
 const logger = new Logger('Worker');
 const rulesManager = new RulesManager();
@@ -265,15 +266,23 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  const skip = await shouldSkipSync();
+  if (skip) return;
+  
   logger.log("Browser startup: Running daily update check.");
   runUpdateCheck();
   
   logger.log("Extension startup - syncing DNR rules");
   await updateActiveRules();
   
-  const result = await syncLicenseKeyStatus();
-  logger.log('Startup: Pro status is', result.isPro, '- updating context menu...');
-  await updateContextMenu(result.isPro);
+  try {
+    const result = await syncLicenseKeyStatus();
+    logger.log('Startup: Pro status is', result.isPro, '- updating context menu...');
+    await updateContextMenu(result.isPro);
+    await chrome.storage.local.set({ lastCheck: Date.now() });
+  } catch (error) {
+    logger.error('Error syncing:', error);
+  }
   
   setTimeout(async () => {
     await validateDnrIntegrity();
@@ -345,9 +354,9 @@ async function checkAndRequestPermissions() {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   logger.log(`Extension event: ${details.reason}`);
-
+  
   chrome.runtime.setUninstallURL("https://blockdistraction.com/uninstall.html");
-
+  
   if (details.reason === 'install') {
     logger.log("This is a fresh install. Checking permissions...");
     await initializeExtension(details);
@@ -475,7 +484,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         logger.error('Failed to delete rules via message:', error);
         sendResponse({ success: false, error: error.message });
       });
-
+    
     return true;
   }
 });
