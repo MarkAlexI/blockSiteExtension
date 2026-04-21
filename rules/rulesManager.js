@@ -23,10 +23,43 @@ export class RulesManager {
     await new Promise((resolve) => {
       chrome.storage.sync.set({ rules }, resolve);
     });
+    await this.syncDnrRules();
     
     chrome.runtime.sendMessage({
       type: 'reload_rules'
     });
+  }
+
+  async syncDnrRules() {
+    try {
+      const rules = await this.getRules();
+      const settings = await this.getSettings();
+      const disabledCategories = settings.disabledCategories || [];
+      
+      const currentDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
+      const removeRuleIds = currentDnrRules.map(r => r.id);
+
+      const activeRules = rules.filter(rule => this.isRuleActiveNow(rule, disabledCategories));
+      const addRules = [];
+      const seenIds = new Set();
+
+      for (const rule of activeRules) {
+        const safeId = Math.floor(Number(rule.id));
+        if (!seenIds.has(safeId)) {
+          const dnrRule = await this.createDNRRule(safeId, rule.blockURL, rule.redirectURL);
+          addRules.push(dnrRule);
+          seenIds.add(safeId);
+        }
+      }
+
+      await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds,
+        addRules
+      });
+      this.logger.log(`DNR Synced: ${addRules.length} rules active.`);
+    } catch (error) {
+      this.logger.error("DNR Sync error:", error);
+    }
   }
   
   validateRule(blockURL, redirectURL, schedule, category) {
@@ -81,11 +114,7 @@ export class RulesManager {
     });
   }
   
-  async createDNRRule(blockURL, redirectURL) {
-    const dnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-    const maxId = dnrRules.length ? Math.max(...dnrRules.map(r => r.id)) : 0;
-    const newId = maxId + 1;
-    
+  async createDNRRule(id, blockURL, redirectURL) {
     const filter = normalizePathRule(blockURL.trim());
     const urlFilter = `||${filter}`;
     
@@ -103,7 +132,7 @@ export class RulesManager {
     }
     
     return {
-      id: newId,
+      id: Math.floor(Number(id)),
       condition: { urlFilter, resourceTypes: ["main_frame"] },
       priority: 100,
       action
@@ -123,14 +152,11 @@ export class RulesManager {
     }
     
     try {
-      const newDnrRule = await this.createDNRRule(blockURL, redirectURL);
-      
-      await chrome.declarativeNetRequest.updateDynamicRules({
-        addRules: [newDnrRule]
-      });
-      
+      const validIds = rules.map(r => Number(r.id)).filter(id => id > 0 && id < 2000000000);
+      const safeId = validIds.length > 0 ? Math.max(...validIds) + 1 : 1;
+
       const newRule = {
-        id: newDnrRule.id,
+        id: safeId,
         blockURL: blockURL.trim(),
         redirectURL: redirectURL.trim(),
         schedule,
@@ -143,7 +169,6 @@ export class RulesManager {
       
       return newRule;
     } catch (error) {
-      this.logger.info("DNR add error:", error);
       throw new Error('Failed to add rule');
     }
   }
@@ -171,18 +196,8 @@ export class RulesManager {
     }
     
     try {
-      await chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: [oldRule.id]
-      });
-      
-      const newDnrRule = await this.createDNRRule(newBlockURL, newRedirectURL);
-      
-      await chrome.declarativeNetRequest.updateDynamicRules({
-        addRules: [newDnrRule]
-      });
-      
       rules[index] = {
-        id: newDnrRule.id,
+        id: oldRule.id,
         blockURL: newBlockURL.trim(),
         redirectURL: newRedirectURL.trim(),
         schedule,
@@ -194,7 +209,6 @@ export class RulesManager {
       
       return rules[index];
     } catch (error) {
-      this.logger.info("DNR update error:", error);
       throw new Error('Failed to update rule');
     }
   }
@@ -208,16 +222,11 @@ export class RulesManager {
     }
     
     try {
-      await chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: [ruleToDelete.id]
-      });
-      
       rules.splice(index, 1);
       await this.saveRules(rules);
       
       return ruleToDelete;
     } catch (error) {
-      this.logger.info("DNR remove error:", error);
       throw new Error('Failed to delete rule');
     }
   }
@@ -265,25 +274,24 @@ export class RulesManager {
     rule.disabledByUser = !rule.disabledByUser;
     await this.saveRules(rules);
     
-    await this.updateActiveRules();
-    
     return rule;
   }
   
-  async toggleRuleDisabled(index) {
-    const rules = await this.getRules();
-    const rule = rules[index];
+  async toggleCategoryDisabled(category) {
+    const settings = await this.getSettings();
+    let disabledCategories = settings.disabledCategories || [];
     
-    if (!rule) {
-      throw new Error('Rule not found');
+    if (disabledCategories.includes(category)) {
+      disabledCategories = disabledCategories.filter(c => c !== category);
+    } else {
+      disabledCategories.push(category);
     }
-    
-    rule.disabledByUser = !rule.disabledByUser;
-    await this.saveRules(rules);
-    
-    await this.updateActiveRules();
-    
-    return rule;
+
+    await chrome.storage.sync.set({ 
+      settings: { ...settings, disabledCategories } 
+    });
+    await this.syncDnrRules();
+    chrome.runtime.sendMessage({ type: 'reload_rules' });
   }
   
   async migrateRules() {
@@ -291,10 +299,15 @@ export class RulesManager {
     let needsFullMigration = false;
     let needsSave = false;
     
+    const hasInvalidId = rules.some(r => !r.id || typeof r.id !== 'number' || r.id > 2000000000);
+    const hasDuplicates = !hasInvalidId && new Set(rules.map(r => r.id)).size !== rules.length;
+    const shouldResetAllIds = hasInvalidId || hasDuplicates;
+
     const migratedRules = rules.map((rule, i) => {
       const newRule = { ...rule };
       
-      if (!rule.id) {
+      if (shouldResetAllIds) {
+        newRule.id = i + 1;
         needsFullMigration = true;
         needsSave = true;
       }
@@ -313,56 +326,8 @@ export class RulesManager {
     });
     
     if (needsFullMigration) {
-      try {
-        const oldDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-        await chrome.declarativeNetRequest.updateDynamicRules({
-          removeRuleIds: oldDnrRules.map(r => r.id)
-        });
-        
-        const newDnrRules = migratedRules.map((rule, i) => {
-          const filter = normalizePathRule(rule.blockURL);
-          const urlFilter = `||${filter}`;
-          
-          let action;
-          if (rule.redirectURL && rule.redirectURL.trim() !== '') {
-            const finalRedirectUrl = new URL(this.intermediaryRedirectURL);
-            finalRedirectUrl.searchParams.set('from', rule.blockURL);
-            finalRedirectUrl.searchParams.set('to', rule.redirectURL);
-            action = { type: "redirect", redirect: { url: finalRedirectUrl.href } };
-          } else {
-            const finalRedirectUrl = new URL(this.defaultRedirectURL);
-            finalRedirectUrl.searchParams.set('url', rule.blockURL);
-            action = { type: "redirect", redirect: { url: finalRedirectUrl.href } };
-          }
-          
-          return {
-            id: i + 1,
-            condition: { urlFilter, resourceTypes: ["main_frame"] },
-            priority: 100,
-            action
-          };
-        });
-        
-        await chrome.declarativeNetRequest.updateDynamicRules({
-          addRules: newDnrRules
-        });
-        
-        const finalRules = newDnrRules.map((dnrRule, i) => ({
-          id: dnrRule.id,
-          blockURL: migratedRules[i].blockURL,
-          redirectURL: migratedRules[i].redirectURL,
-          schedule: migratedRules[i].schedule,
-          category: migratedRules[i].category,
-          disabledByUser: migratedRules[i].disabledByUser
-        }));
-        
-        await this.saveRules(finalRules);
-        
-        return { migrated: true, rules: finalRules };
-      } catch (error) {
-        this.logger.info("Migration error:", error);
-        throw new Error('Failed to migrate rules');
-      }
+      await this.saveRules(migratedRules);
+      return { migrated: true, rules: migratedRules };
     } else if (needsSave) {
       await this.saveRules(migratedRules);
       return { migrated: true, rules: migratedRules };
@@ -384,8 +349,9 @@ export class RulesManager {
     return settings.mode === 'strict';
   }
   
-  isRuleActiveNow(rule) {
+  isRuleActiveNow(rule, disabledCategories = []) {
     if (rule.disabledByUser) return false;
+    if (disabledCategories.includes(rule.category)) return false;
     if (!rule.schedule) return true;
     
     const now = new Date();

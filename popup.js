@@ -133,12 +133,6 @@ class PopupPage {
       }
       this.createRuleInputs();
     });
-    
-    chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === 'sync' && changes.settings) {
-        this.loadSettings();
-      }
-    });
   }
   
   openOptionsPage() {
@@ -197,7 +191,7 @@ class PopupPage {
       this.rulesContainer.innerHTML = '';
       
       rules.forEach(rule => {
-        this.createRuleInputs(rule.blockURL, rule.redirectURL, rule.id, rule.disabledByUser ?? false);
+        this.createRuleInputs(rule.blockURL, rule.redirectURL, rule.id, rule.disabledByUser ?? false, rule.category);
       });
       
       this.updateStatus(rules.length);
@@ -294,9 +288,7 @@ class PopupPage {
         }
         
         await this.rulesManager.addRule(url, '');
-        
         await this.loadRules();
-        
         customAlert('+ 1');
         chrome.runtime.sendMessage({
           type: 'CLOSE_MATCHING_TABS',
@@ -310,11 +302,17 @@ class PopupPage {
     }
   }
   
-  createRuleInputs(blockURLValue = '', redirectURLValue = '', ruleId = null, disabledByUser = false) {
+  createRuleInputs(blockURLValue = '', redirectURLValue = '', ruleId = null, disabledByUser = false, category = 'uncategorized') {
     const ruleDiv = document.createElement('div');
-    ruleDiv.className = 'rule';
+    const isMuted = (this.settings.disabledCategories || []).includes(category);
+    
+    ruleDiv.className = isMuted ? 'rule category-muted' : 'rule';
     ruleDiv.dataset.ruleId = ruleId;
     
+    if (isMuted) {
+      ruleDiv.title = t('category_muted_no_edit');
+    }
+
     const blockURL = document.createElement('input');
     blockURL.type = 'text';
     blockURL.placeholder = t('blockurl');
@@ -353,8 +351,6 @@ class PopupPage {
       } else {
         this.makeInputReadOnly(blockURL);
         this.makeInputReadOnly(redirectURL);
-        
-        // Add toggle for existing rules
         const toggleElement = document.createElement('span');
         toggleElement.className = 'rule-toggle-popup';
         toggleElement.textContent = disabledByUser ? '✗' : '✓';
@@ -362,11 +358,13 @@ class PopupPage {
         toggleElement.style.cursor = 'pointer';
         toggleElement.style.marginLeft = '10px';
         toggleElement.addEventListener('click', async () => {
+          if (isMuted) return;
           try {
             const rules = await this.rulesManager.getRules();
             const index = rules.findIndex(r => r.id === ruleId);
             if (index !== -1) {
               await this.rulesManager.toggleRuleDisabled(index);
+              await this.loadRules();
               toggleElement.textContent = toggleElement.textContent === '✓' ? '✗' : '✓';
               toggleElement.title = toggleElement.title === (t('rule_enabled') || 'Enabled') ? (t('rule_disabled') || 'Disabled') : (t('rule_enabled') || 'Enabled');
             }
@@ -383,6 +381,7 @@ class PopupPage {
         deleteButton.textContent = t('deletebtn');
         
         deleteButton.addEventListener('click', async () => {
+          if (isMuted) return;
           await this.handleRuleDeletion(deleteButton, blockURL.value, redirectURL.value, ruleDiv);
         });
         
@@ -428,23 +427,9 @@ class PopupPage {
       }
       
       await this.rulesManager.addRule(blockURL.value, redirectURL.value);
-      
-      const updatedRules = await this.rulesManager.getRules();
-      this.currentRuleCount = updatedRules.length;
-      this.updateStatus(updatedRules.length);
+      await this.loadRules();
       
       ruleDiv.remove();
-      
-      const newRule = updatedRules.find(r => r.blockURL === blockURL.value.trim());
-      if (newRule) {
-        this.createRuleInputs(newRule.blockURL, newRule.redirectURL, newRule.id, newRule.disabledByUser ?? false);
-      }
-      
-      const canAddMore = this.isPro || this.isLegacyUser || (updatedRules.length < MAX_RULES_LIMIT);
-      
-      if (canAddMore) {
-        this.createRuleInputs();
-      }
       
       customAlert('+ 1');
       chrome.runtime.sendMessage({
@@ -490,19 +475,7 @@ class PopupPage {
             try {
               if (blockURL) {
                 await this.rulesManager.deleteRuleByData(blockURL, redirectURL);
-                
                 await this.loadRules();
-                
-                const rules = await this.rulesManager.getRules();
-                const canAddMore = this.isPro || this.isLegacyUser || (rules.length < MAX_RULES_LIMIT);
-                
-                const firstInput = this.rulesContainer.querySelector('input[type="text"]');
-                const isFirstEmpty = firstInput && !firstInput.value;
-                
-                if (canAddMore && !isFirstEmpty) {
-                  this.createRuleInputs();
-                }
-                
                 customAlert('- 1');
               } else {
                 ruleDiv.remove();

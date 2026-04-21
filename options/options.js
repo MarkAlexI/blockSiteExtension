@@ -3,6 +3,8 @@ import { SettingsManager } from './settings.js';
 import { ProManager } from '../pro/proManager.js';
 import { RulesManager } from '../rules/rulesManager.js';
 import { RulesUI } from '../rules/rulesUI.js';
+import { CategoryManager } from '../rules/categoryManager.js';
+import { CategoryUIManager } from './categoryUIManager.js';
 import { PasswordUtils } from '../pro/password.js';
 import { initializeNoSpaceInputs } from '../utils/noSpaces.js';
 import Logger from '../utils/logger.js';
@@ -23,6 +25,7 @@ class OptionsPage {
     this.statusElement = document.getElementById('status');
     this.searchInput = document.getElementById('search-input');
     this.categoryFilter = document.getElementById('category-filter');
+    this.categoriesContainer = document.getElementById('categories-container');
     
     this.init();
     this.exposeDebugTools();
@@ -37,6 +40,7 @@ class OptionsPage {
     this.setupEventListeners();
     this.settingsManager.setRulesUpdatedCallback(() => {
       this.loadRules();
+      this.loadCategories();
     });
     
     try {
@@ -48,6 +52,7 @@ class OptionsPage {
     
     await ProManager.initializeProFeatures();
     this.loadRules();
+    this.loadCategories();
   }
   
   initializeUI() {
@@ -64,6 +69,9 @@ class OptionsPage {
     setContent('category-header', 'category_header');
     setContent('actions-header', 'actionsheader');
     
+    if (this.categoryFilter) {
+      this.categoryFilter.title = t('filter_only_hint') || 'This dropdown only filters the list below';
+    }
     if (this.searchInput) this.searchInput.placeholder = t('searchfordomain');
     
     const translateOption = (val, key) => {
@@ -86,6 +94,10 @@ class OptionsPage {
     if (this.addRuleButton) this.addRuleButton.addEventListener('click', () => this.showAddRuleForm());
     if (this.searchInput) this.searchInput.addEventListener('input', () => this.loadRules());
     if (this.categoryFilter) this.categoryFilter.addEventListener('change', () => this.loadRules());
+  
+    document.querySelectorAll('.collapsible-header').forEach(header => {
+      header.addEventListener('click', () => header.parentElement.classList.toggle('expanded'));
+    });
   }
   
   async promptForPassword() {
@@ -101,7 +113,7 @@ class OptionsPage {
       let rules;
       let migrationResult = { migrated: false };
       
-      if (rules_from_message) {
+      if (Array.isArray(rules_from_message)) {
         rules = rules_from_message;
         this.logger.log("Options: Loading rules from message.");
       } else {
@@ -130,7 +142,9 @@ class OptionsPage {
       }
       
       const canEdit = this.isPro || this.isLegacyUser || rules.length <= MAX_RULES_LIMIT;
-      this.renderRules(filteredRules, canEdit, isFiltered);
+      const settings = await SettingsManager.getSettings();
+      const disabledCategories = settings.disabledCategories || [];
+      this.renderRules(filteredRules, canEdit, isFiltered, disabledCategories);
       this.rulesUI.updateStatus(this.statusElement, filteredRules.length);
       
       if (this.settingsManager) {
@@ -143,7 +157,7 @@ class OptionsPage {
     }
   }
   
-  renderRules(rules, canEdit, isFiltered = false) {
+  renderRules(rules, canEdit, isFiltered = false, disabledCategories = []) {
     this.rulesBody.innerHTML = '';
     const noRulesMessage = isFiltered ? t('norulesforcategory') : t('norules');
     
@@ -154,23 +168,30 @@ class OptionsPage {
     }
     
     rules.forEach((rule, index) => {
-      const row = this.createRuleRow(rule, index, canEdit);
+      const row = this.createRuleRow(rule, index, canEdit, disabledCategories);
       this.rulesBody.prepend(row);
     });
   }
   
-  createRuleRow(rule, index, canEdit) {
-    return this.rulesUI.createRuleDisplayRow(
+  createRuleRow(rule, index, canEdit, disabledCategories = []) {
+    const isMuted = disabledCategories.includes(rule.category);
+    const row = this.rulesUI.createRuleDisplayRow(
       rule,
       index,
       (row, index, rule) => this.toggleEditMode(row, index, rule),
       (e, index) => this.handleRuleDeletion(e, index),
       async (index) => {
+          if (isMuted) return;
           await this.rulesManager.toggleRuleDisabled(index);
-          this.loadRules();
+          await this.loadRules();
         },
-        canEdit
+        canEdit,
+        disabledCategories
     );
+    if (isMuted) {
+      row.title = t('category_muted_no_edit');
+    }
+    return row;
   }
   
   async handleRuleDeletion(event, index) {
@@ -206,6 +227,12 @@ class OptionsPage {
   }
   
   async toggleEditMode(row, index, rule) {
+    const settings = await SettingsManager.getSettings();
+    const disabledCategories = settings.disabledCategories || [];
+    if (disabledCategories.includes(rule.category)) {
+      this.rulesUI.showErrorMessage(t('category_muted_no_edit') || 'Cannot edit: Category blocking is paused');
+      return;
+    }
     const editRow = this.rulesUI.createRuleEditRow(
       rule,
       index,
@@ -215,7 +242,6 @@ class OptionsPage {
       rule.disabledByUser
     );
     
-    const settings = await SettingsManager.getSettings();
     if (settings.enablePassword) {
       const isValid = await this.promptForPassword();
       if (!isValid) return;
@@ -226,7 +252,7 @@ class OptionsPage {
   
   async saveEditedRule(index, newBlock, newRedirect, newCategory, newSchedule, oldRuleId, disabledByUser) {
     try {
-      await this.rulesManager.updateRule(index, newBlock, newRedirect, newSchedule, newCategory, null);
+      await this.rulesManager.updateRule(index, newBlock, newRedirect, newSchedule, newCategory, disabledByUser);
       
       if (newBlock) {
         chrome.runtime.sendMessage({
@@ -236,7 +262,7 @@ class OptionsPage {
       }
       
       this.statusElement.textContent = t('ruleupdated');
-      this.loadRules();
+      await this.loadRules();
     } catch (error) {
       this.logger.info("Save edited rule error:", error);
       if (error.message.includes('Validation failed')) {
@@ -296,6 +322,38 @@ class OptionsPage {
       } else {
         this.rulesUI.showErrorMessage(t('errorupdatingrule'));
       }
+    }
+  }
+  async loadCategories() {
+    try {
+      const rules = await this.rulesManager.getRules();
+      const settings = await SettingsManager.getSettings();
+      const disabledCategories = settings.disabledCategories || [];
+      if (!this.categoriesContainer) return;
+      CategoryUIManager.updateCategoryGrid(
+        this.categoriesContainer,
+        rules,
+        disabledCategories,
+        (category) => this.handleCategoryToggle(category)
+      );
+    } catch (error) {
+      this.logger.error('Load categories error:', error);
+    }
+  }
+  
+  async handleCategoryToggle(category) {
+    try {
+      if (!this.isPro && !this.isLegacyUser) {
+        this.rulesUI.showErrorMessage(t('prorequired'));
+        this.loadCategories();
+        return;
+      }
+      await this.rulesManager.toggleCategoryDisabled(category);
+      this.loadCategories();
+      this.loadRules();
+    } catch (error) {
+      this.logger.error('Category toggle error:', error);
+      this.rulesUI.showErrorMessage(t('errorupdatingrules'));
     }
   }
   
