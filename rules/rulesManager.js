@@ -37,25 +37,26 @@ export class RulesManager {
       const disabledCategories = settings.disabledCategories || [];
       
       const currentDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-      const removeRuleIds = currentDnrRules.map(r => r.id);
+      const currentDnrIds = currentDnrRules.map(r => r.id);
 
       const activeRules = rules.filter(rule => this.isRuleActiveNow(rule, disabledCategories));
       const addRules = [];
       const seenIds = new Set();
 
       for (const rule of activeRules) {
-        const safeId = Math.floor(Number(rule.id));
-        if (!seenIds.has(safeId)) {
-          const dnrRule = await this.createDNRRule(safeId, rule.blockURL, rule.redirectURL);
+        const id = Math.floor(Number(rule.id));
+        if (id > 0 && !seenIds.has(id)) {
+          const dnrRule = await this.createDNRRule(id, rule.blockURL, rule.redirectURL);
           addRules.push(dnrRule);
-          seenIds.add(safeId);
+          seenIds.add(id);
         }
       }
 
       await chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds,
-        addRules
+        removeRuleIds: currentDnrIds,
+        addRules: addRules
       });
+
       this.logger.log(`DNR Synced: ${addRules.length} rules active.`);
     } catch (error) {
       this.logger.error("DNR Sync error:", error);
@@ -152,8 +153,14 @@ export class RulesManager {
     }
     
     try {
-      const validIds = rules.map(r => Number(r.id)).filter(id => id > 0 && id < 2000000000);
-      const safeId = validIds.length > 0 ? Math.max(...validIds) + 1 : 1;
+      const dnrRules = await chrome.declarativeNetRequest.getDynamicRules();
+      const occupiedIds = new Set([
+        ...rules.map(r => Math.floor(Number(r.id))),
+        ...dnrRules.map(r => r.id)
+      ]);
+
+      let safeId = 1;
+      while (occupiedIds.has(safeId)) safeId++;
 
       const newRule = {
         id: safeId,
@@ -263,20 +270,6 @@ export class RulesManager {
     }
   }
   
-  async toggleRuleDisabled(index) {
-    const rules = await this.getRules();
-    const rule = rules[index];
-    
-    if (!rule) {
-      throw new Error('Rule not found');
-    }
-    
-    rule.disabledByUser = !rule.disabledByUser;
-    await this.saveRules(rules);
-    
-    return rule;
-  }
-  
   async toggleCategoryDisabled(category) {
     const settings = await this.getSettings();
     let disabledCategories = settings.disabledCategories || [];
@@ -367,15 +360,6 @@ export class RulesManager {
     return currentMinutes >= startMinutes && currentMinutes < endMinutes;
   }
 
-  async toggleRuleDisabled(index) {
-    const rules = await this.getRules();
-    if (!rules[index]) {
-      throw new Error('Rule not found');
-    }
-    rules[index].disabledByUser = !rules[index].disabledByUser;
-    await this.saveRules(rules);
-    return rules[index];
-  }
   
   async enableRulesByCategory(category) {
     const rules = await this.getRules();
