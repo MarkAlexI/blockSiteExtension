@@ -270,6 +270,16 @@ export class RulesManager {
     }
   }
   
+  async toggleRuleDisabled(index) {
+    const rules = await this.getRules();
+    if (!rules[index]) {
+      throw new Error('Rule not found');
+    }
+    rules[index].disabledByUser = !rules[index].disabledByUser;
+    await this.saveRules(rules);
+    return rules[index];
+  }
+
   async toggleCategoryDisabled(category) {
     const settings = await this.getSettings();
     let disabledCategories = settings.disabledCategories || [];
