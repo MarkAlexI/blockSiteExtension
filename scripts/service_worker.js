@@ -330,12 +330,17 @@ async function initializeExtension(details) {
   }
 }
 
+let isCheckingPermissions = false;
+
 async function checkAndRequestPermissions(details) {
+  if (isCheckingPermissions) return;
+  isCheckingPermissions = true;
+  
   try {
     let granted;
     if (typeof chrome.permissions?.contains === 'function') {
       granted = await chrome.permissions.contains({
-        origins: ["*://*/"]
+        origins: ["*://*/*"]
       });
     } else {
       logger.warn("Permissions API not available. Assuming granted.");
@@ -356,12 +361,14 @@ async function checkAndRequestPermissions(details) {
     }
   } catch (err) {
     logger.error("Error checking permissions:", err);
+  } finally {
+    setTimeout(() => { isCheckingPermissions = false; }, 2000);
   }
 }
 
 if (chrome.permissions && chrome.permissions.onRemoved) {
   chrome.permissions.onRemoved.addListener(async (permissions) => {
-    if (permissions.origins && permissions.origins.includes("*://*/")) {
+    if (permissions.origins && permissions.origins.includes("*://*/*")) {
       logger.warn("Host permission revoked by user or browser. Opening onboarding.");
       
       const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('onboarding/onboarding.html') });
