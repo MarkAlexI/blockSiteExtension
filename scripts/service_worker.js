@@ -273,6 +273,8 @@ chrome.runtime.onStartup.addListener(async () => {
   logger.log("Browser startup: Running daily update check.");
   runUpdateCheck();
   
+  await checkAndRequestPermissions({ reason: 'startup' });
+  
   logger.log("Extension startup - syncing DNR rules");
   await updateActiveRules();
   
@@ -345,13 +347,31 @@ async function checkAndRequestPermissions(details) {
       await initializeExtension(details);
     } else {
       logger.log("Host permission NOT granted. Opening onboarding page.");
-      chrome.tabs.create({
-        url: chrome.runtime.getURL('onboarding/onboarding.html')
-      });
+      const onboardingUrl = chrome.runtime.getURL('onboarding/onboarding.html');
+      const tabs = await chrome.tabs.query({ url: onboardingUrl });
+      
+      if (tabs.length === 0) {
+        chrome.tabs.create({ url: onboardingUrl });
+      }
     }
   } catch (err) {
     logger.error("Error checking permissions:", err);
   }
+}
+
+if (chrome.permissions && chrome.permissions.onRemoved) {
+  chrome.permissions.onRemoved.addListener(async (permissions) => {
+    if (permissions.origins && permissions.origins.includes("*://*/")) {
+      logger.warn("Host permission revoked by user or browser. Opening onboarding.");
+      
+      const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('onboarding/onboarding.html') });
+      if (tabs.length === 0) {
+        chrome.tabs.create({
+          url: chrome.runtime.getURL('onboarding/onboarding.html')
+        });
+      }
+    }
+  });
 }
 
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -377,6 +397,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   } else if (details.reason === 'chrome_update' || details.reason === 'browser_update') {
     logger.log("Browser updated.");
     await validateDnrIntegrity();
+    await checkAndRequestPermissions(details);
   } else if (details.reason === 'shared_module_update') {
     logger.log("Shared module updated.");
   }
@@ -489,6 +510,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     return true;
   }
+});
+
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  await checkAndRequestPermissions({ reason: 'tab_activated' });
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
