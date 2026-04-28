@@ -17,12 +17,12 @@ export function isBlockedURL(tabs) {
   
   const blockedPatterns = [
     /^chrome:\/\//,
-    /^chrome-extension:\/\//,
+    /extension:\/\//,
     /^https:\/\/chrome\.google\.com\/webstore/,
     /^https:\/\/chromewebstore\.google\.com/,
     /^edge:\/\//,
     /^kiwi:\/\//,
-    /^kiwi-extension:\/\//,
+    /^file:\/\//,
     /^devtools:/,
     /^view-source:/,
     /^data:/
