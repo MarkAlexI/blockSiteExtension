@@ -103,7 +103,7 @@ export class StatisticsManager {
     try {
       const newStats = {
         ...this.defaultStats,
-        createdDate: new Date().toISOString()
+        lastResetDate: new Date().toISOString()
       };
       await chrome.storage.local.set({ statistics: newStats });
       return newStats;
