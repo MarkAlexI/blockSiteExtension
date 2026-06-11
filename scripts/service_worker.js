@@ -72,9 +72,11 @@ async function updateContextMenu(isPro) {
     void chrome.runtime.lastError;
     
     if (isPro) {
+      const menuTitle = chrome.i18n.getMessage('blockthat');
+      
       chrome.contextMenus.create({
         id: 'blockDistraction',
-        title: 'Block this Site',
+        title: menuTitle,
         contexts: IS_FIREFOX ? ['link'] : ['page', 'link']
       }, () => {
         void chrome.runtime.lastError;
