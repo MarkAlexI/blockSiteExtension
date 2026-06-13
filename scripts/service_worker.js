@@ -188,12 +188,13 @@ async function clearAllDnrRules() {
 }
 
 async function showUpdates(details) {
-  //return true;
+  const version = chrome.runtime.getManifest().version;
+  if (!/\.0$/.test(version)) return true;
+  
   try {
     const settings = await SettingsManager.getSettings();
     
     if (details.reason === 'update' && settings.showNotifications === true) {
-      const version = chrome.runtime.getManifest().version;
       chrome.tabs.create({
         url: chrome.runtime.getURL(`update/update.html?version=${version}`)
       });
@@ -201,7 +202,6 @@ async function showUpdates(details) {
   } catch (error) {
     logger.error('Error showing updates:', error);
     if (details.reason === 'update') {
-      const version = chrome.runtime.getManifest().version;
       chrome.tabs.create({
         url: chrome.runtime.getURL(`update/update.html?version=${version}`)
       });
