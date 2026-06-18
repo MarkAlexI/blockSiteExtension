@@ -3,6 +3,7 @@ import { normalizePathSegment } from './normalizePathSegment.js';
 import { isValidURL } from '../scripts/isValidURL.js';
 import { isValidPathSegment } from '../scripts/isValidPathSegment.js';
 import Logger from '../utils/logger.js';
+import { isBlockedURL } from '../scripts/isBlockedURL.js';
 
 export class RulesManager {
   constructor() {
@@ -75,6 +76,10 @@ export class RulesManager {
     
     if (!blockURL || blockURL.trim() === '') {
       errors.push('blockurl_empty');
+    }
+    
+    if (isBlockedURL([{ url: blockURL }])) {
+      errors.push('blockurl_restrict');
     }
     
     if (blockURL && !isValidPathSegment(blockURL)) {

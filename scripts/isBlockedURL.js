@@ -22,10 +22,9 @@ export function isBlockedURL(tabs) {
     /^https:\/\/chromewebstore\.google\.com/,
     /^edge:\/\//,
     /^kiwi:\/\//,
-    /^file:\/\//,
     /^devtools:/,
     /^view-source:/,
-    /^data:/
+    /blockdistraction/
   ];
   
   return blockedPatterns.some(pattern => pattern.test(url));
