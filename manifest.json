@@ -3,10 +3,10 @@
   "name": "__MSG_chromename__",
   "short_name": "__MSG_shortname__",
   "description": "__MSG_description__",
-  "author": "MarkAlexI",
+  "author": "MarkAlex",
   "homepage_url": "https://blockdistraction.com",
   "default_locale": "en",
-  "version": "3.9.8",
+  "version": "3.9.9",
   "icons": {
     "16": "images/icon-16.png",
     "32": "images/icon-32.png",

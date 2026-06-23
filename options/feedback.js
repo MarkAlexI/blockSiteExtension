@@ -5,6 +5,10 @@ import {
   SUPPORT_LINK
 } from '../utils/constants.js';
 
+const reviewLink = navigator.userAgent
+    .includes('Edg')
+    ? 'https://microsoftedge.microsoft.com/addons/detail/ilmfjlfmilmafofbanphijmbklbmolhi'
+    : REVIEWS_LINK;
 const storageObj = chrome.storage.sync;
 
 export async function initFeedbackPopup() {
@@ -43,7 +47,7 @@ export async function initFeedbackPopup() {
     await updateFeedbackStatus(true);
     dialog.close();
       
-    window.open(REVIEWS_LINK, '_blank');
+    window.open(reviewLink, '_blank');
   });
 
   dislikeBtn.addEventListener('click', async () => {
