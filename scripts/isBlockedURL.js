@@ -24,7 +24,8 @@ export function isBlockedURL(tabs) {
     /^kiwi:\/\//,
     /^devtools:/,
     /^view-source:/,
-    /blockdistraction/
+    /blockdistraction/,
+    /microsoft/
   ];
   
   return blockedPatterns.some(pattern => pattern.test(url));
