@@ -19,6 +19,14 @@
       <p data-i18n="optionsdescription">Configure your extension behavior and security settings</p>
     </header>
     
+    <div id="focus-session-banner" class="focus-banner hidden">
+      <span class="focus-banner-icon">⏱️</span>
+      <div class="focus-banner-text">
+        <strong data-i18n="focussessionactivebanner">Focus Session Active</strong>
+        <span id="focus-banner-timer">00:00</span>
+      </div>
+    </div>
+    
     <div id="pro-section" class="go-pro">
       <div>
         <button class="pro-toggle" id="proBtn">
@@ -103,6 +111,18 @@
                   </div>
                 </label>
               </div>
+            </div>
+          </div>
+          <div class="setting-item hidden">
+            <div class="setting-info">
+              <label for="focusSessionSound" data-i18n="focussessionsoundtitle">Focus Session Sound Notification</label>
+              <span class="setting-description" data-i18n="focussessionsounddesc">Play a sound when the focus session ends.</span>
+            </div>
+            <div class="toggle-switch">
+              <input type="checkbox" id="focusSessionSound" class="toggle-input">
+              <label for="focusSessionSound" class="toggle-label">
+                <span class="toggle-slider"></span>
+              </label>
             </div>
           </div>
         </div>
@@ -232,6 +252,10 @@
           <div class="stat-item">
             <span class="stat-number" id="totalRedirects">-</span>
             <span class="stat-label" data-i18n="totalredirectslabel">Total Redirects</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-number" id="successfulFocusSessions">-</span>
+            <span class="stat-label" data-i18n="successfulfocussessionslabel">Successful Focus Sessions</span>
           </div>
           
           <div class="action-buttons">
