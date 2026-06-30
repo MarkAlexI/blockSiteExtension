@@ -17,7 +17,7 @@ export class SettingsManager {
       debugMode: false,
       focusSessionSound: true
     };
-
+    
     this.focusBanner = document.getElementById('focus-session-banner');
     this.focusBannerTimer = document.getElementById('focus-banner-timer');
     this.focusTimerInterval = null;
@@ -49,7 +49,7 @@ export class SettingsManager {
         this.logger.log('Default settings initialized');
       } else {
         const mergedSettings = { ...this.defaultSettings, ...result.settings };
-
+        
         const hasNewFields = Object.keys(this.defaultSettings).some(
           key => !(key in result.settings)
         );
@@ -116,10 +116,10 @@ export class SettingsManager {
     
     const passBox = document.getElementById('enablePassword');
     if (passBox) passBox.checked = settings.enablePassword;
-
+    
     const debugBox = document.getElementById('enableDebug');
     if (debugBox) debugBox.checked = settings.debugMode;
-
+    
     const focusSoundBox = document.getElementById('focusSessionSound');
     if (focusSoundBox) focusSoundBox.checked = settings.focusSessionSound;
   }
@@ -163,22 +163,22 @@ export class SettingsManager {
       document.getElementById('add-rule'),
       document.querySelector('.table-wrapper')
     ];
-
+    
     elementsToLock.forEach(el => {
       if (el) {
         el.classList.toggle('focus-lock-active', locked);
       }
     });
   }
-
+  
   async initFocusSessionBanner() {
     if (this.focusTimerInterval) {
       clearInterval(this.focusTimerInterval);
       this.focusTimerInterval = null;
     }
-
+    
     const { focusActive, focusEndTime } = await getFocusSessionState();
-
+    
     if (focusActive && focusEndTime > Date.now()) {
       this.focusBanner.classList.remove('hidden');
       this.toggleUIAccessibility(true);
@@ -189,11 +189,11 @@ export class SettingsManager {
       this.toggleUIAccessibility(false);
     }
   }
-
+  
   updateBannerTimer(endTime) {
     const now = Date.now();
     const remaining = endTime - now;
-
+    
     if (remaining <= 0) {
       this.focusBannerTimer.textContent = '00:00';
       clearInterval(this.focusTimerInterval);
@@ -202,12 +202,12 @@ export class SettingsManager {
       this.toggleUIAccessibility(false);
       return;
     }
-
+    
     const minutes = Math.floor((remaining / 1000 / 60) % 60).toString().padStart(2, '0');
     const seconds = Math.floor((remaining / 1000) % 60).toString().padStart(2, '0');
     this.focusBannerTimer.textContent = `${minutes}:${seconds}`;
   }
-
+  
   async checkPasswordProtection() {
     const settings = await SettingsManager.getSettings();
     if (settings.enablePassword) {
@@ -229,8 +229,8 @@ export class SettingsManager {
         if (e.target.name === 'securityMode') {
           settingsToSave.mode = e.target.value;
         } else if (e.target.id === 'enableDebug') {
-            settingsToSave.debugMode = e.target.checked;
-            this.logger.info(`Debug mode changed to: ${e.target.checked}`);
+          settingsToSave.debugMode = e.target.checked;
+          this.logger.info(`Debug mode changed to: ${e.target.checked}`);
         } else {
           settingsToSave[e.target.id] = e.target.checked;
         }
@@ -245,7 +245,7 @@ export class SettingsManager {
         await this.saveSettings({ focusSessionSound: e.target.checked });
       });
     }
-
+    
     const enablePasswordToggle = document.getElementById('enablePassword');
     if (enablePasswordToggle) {
       enablePasswordToggle.addEventListener('click', async (event) => {
@@ -333,6 +333,11 @@ export class SettingsManager {
     if (namespace === 'local' && changes.statistics) {
       this.logger.log('Statistics changed in storage, reloading stats UI...');
       this.loadStatistics();
+    }
+    
+    if (changes.focusSession) {
+      this.logger.log('Focus session state changed, updating Banner and UI...');
+      this.initFocusSessionBanner();
     }
   }
   
@@ -450,7 +455,7 @@ export class SettingsManager {
         this.showStatus(t('errorcommunication'), 'error');
         return;
       }
-
+      
       const rulesToSave = importData.rules.map((rule, index) => ({
         ...rule,
         id: index + 1,
