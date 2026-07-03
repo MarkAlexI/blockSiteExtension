@@ -1,5 +1,5 @@
 export function createInstallURL() {
-  const base = "https://blockdistraction.com/index.html";
+  const base = "https://blockdistraction.com/";
   
   const browser = "chrome";
   const version = chrome.runtime.getManifest().version;
