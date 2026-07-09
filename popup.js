@@ -603,6 +603,10 @@ class PopupPage {
   updateStatus(count) {
     const outputText = t('savedrules', ' ' + count + ' ');
     this.statusOutput.value = outputText;
+    
+    if (this.focusSection) {
+      this.focusSection.classList.toggle('hidden', count === 0);
+    }
   }
   
   cleanup() {
