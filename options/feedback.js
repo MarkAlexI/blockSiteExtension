@@ -5,8 +5,7 @@ import {
   SUPPORT_LINK
 } from '../utils/constants.js';
 
-const reviewLink = navigator.userAgent
-    .includes('Edg')
+const reviewLink = chrome.runtime.id === 'ilmfjlfmilmafofbanphijmbklbmolhi'
     ? 'https://microsoftedge.microsoft.com/addons/detail/ilmfjlfmilmafofbanphijmbklbmolhi'
     : REVIEWS_LINK;
 const storageObj = chrome.storage.sync;

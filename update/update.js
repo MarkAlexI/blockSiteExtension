@@ -18,6 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ul.append(li);
   });
   
+  if (chrome.runtime.id === 'ilmfjlfmilmafofbanphijmbklbmolhi') {
+    document.getElementById('store_link').setAttribute('href', 'https://microsoftedge.microsoft.com/addons/detail/ilmfjlfmilmafofbanphijmbklbmolhi');
+  }
+  
   document.getElementById('close-btn')
     .addEventListener('click', () => window.close());
 });

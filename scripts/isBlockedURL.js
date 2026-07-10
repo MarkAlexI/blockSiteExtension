@@ -25,7 +25,11 @@ export function isBlockedURL(tabs) {
     /^devtools:/,
     /^view-source:/,
     /blockdistraction/,
-    /microsoft/
+    /markdigital/,
+    /ext\.pp\.ua/,
+    /microsoft/,
+    /bing\.com/,
+    /\/\/newtab/
   ];
   
   return blockedPatterns.some(pattern => pattern.test(url));

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.8] – 2026-07-09
+### Improved
+- Improved support for Microsoft Edge users.
+- Updated Edge store link handling and added protection for Bing-related URLs.
+
 ## [3.10.7] - 2026-07-09
 ### Changed
 - **Dynamic focus session visibility:** Enhanced the popup UX by dynamically toggling the focus session section based on the user's rules list. The focus section is now hidden by default if no blocking rules exist, keeping the interface clean and clutter-free for fresh installs.
