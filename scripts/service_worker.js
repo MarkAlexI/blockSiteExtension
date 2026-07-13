@@ -291,8 +291,7 @@ chrome.runtime.onStartup.addListener(async () => {
   const skip = await shouldSkipSync();
   if (skip) return;
   
-  logger.log("Browser startup: Running daily update check.");
-  runUpdateCheck();
+  ensureAlarmsCreated();
   
   await checkAndRequestPermissions({ reason: 'startup' });
   
@@ -308,15 +307,13 @@ chrome.runtime.onStartup.addListener(async () => {
     logger.error('Error syncing:', error);
   }
   
-  setTimeout(async () => {
-    await validateDnrIntegrity();
-  }, 5000);
+  await validateDnrIntegrity();
 });
 
 async function initializeExtension(details) {
   logger.log("Initializing extension state (rules, settings, legacy status)...");
   
-  await updateActiveRules();
+  await rulesManager.migrateRules();
   await SettingsManager.getSettings();
   await StatisticsManager.getStatistics();
   await showUpdates(details);
@@ -369,8 +366,9 @@ async function checkAndRequestPermissions(details) {
     }
     
     if (granted) {
-      logger.log("Host permission already granted.");
-      await initializeExtension(details);
+      if (details && details.reason !== 'tab_activated') {
+        await initializeExtension(details);
+      }
     } else {
       logger.log("Host permission NOT granted. Opening onboarding page.");
       const onboardingUrl = chrome.runtime.getURL('onboarding/onboarding.html');
@@ -383,7 +381,7 @@ async function checkAndRequestPermissions(details) {
   } catch (err) {
     logger.error("Error checking permissions:", err);
   } finally {
-    setTimeout(() => { isCheckingPermissions = false; }, 2000);
+    isCheckingPermissions = false;
   }
 }
 
@@ -407,6 +405,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   
   chrome.runtime.setUninstallURL("https://blockdistraction.com/uninstall.html");
   
+  ensureAlarmsCreated();
+  
   if (details.reason === 'install') {
     logger.log("This is a fresh install. Checking permissions...");
     await initializeExtension(details);
@@ -416,8 +416,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       url: createInstallURL(),
       active: true
     });
-    
-    chrome.alarms.create('check_extension_update', { delayInMinutes: 60, periodInMinutes: 1440 });
   } else if (details.reason === 'update') {
     logger.log("This is an update. Assuming permissions are granted.");
     await initializeExtension(details);
@@ -620,40 +618,25 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'update_scheduled_rules') {
     await updateActiveRules();
   }
-  
-  if (alarm.name === 'check_extension_update') {
-    logger.log("Alarm: Running daily update check.");
-    runUpdateCheck();
-  }
 });
 
-chrome.alarms.create('check_pro_expiry', {
-  delayInMinutes: .5,
-  periodInMinutes: 1440
-});
+function ensureAlarmsCreated() {
+  chrome.alarms.get('check_pro_expiry', (alarm) => {
+    if (!alarm) {
+      chrome.alarms.create('check_pro_expiry', {
+        delayInMinutes: 0.5,
+        periodInMinutes: 1440
+      });
+    }
+  });
 
-chrome.alarms.create('update_scheduled_rules', {
-  periodInMinutes: 1
-});
-
-chrome.alarms.create('check_extension_update', {
-  delayInMinutes: 60,
-  periodInMinutes: 1440
-});
-
-function runUpdateCheck() {
-  if (typeof chrome.runtime.requestUpdateCheck === 'function') {
-    chrome.runtime.requestUpdateCheck((status, details) => {
-      if (status === 'update_available') {
-        logger.log(`Update check: Update available! Version ${details.version}`);
-        chrome.runtime.reload();
-      } else if (status === 'no_update') {
-        logger.log('Update check: No update available.');
-      } else if (status === 'throttled') {
-        logger.log('Update check: Throttled. Try again later.');
-      }
-    });
-  } else {
-    logger.log('Update check: API (requestUpdateCheck) is not available. (Not Chrome?)');
-  }
+  chrome.alarms.get('update_scheduled_rules', (alarm) => {
+    if (!alarm) {
+      chrome.alarms.create('update_scheduled_rules', {
+        periodInMinutes: 1
+      });
+    }
+  });
 }
+
+ensureAlarmsCreated();
