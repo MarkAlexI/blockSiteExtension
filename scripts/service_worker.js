@@ -312,6 +312,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
 async function initializeExtension(details) {
   logger.log("Initializing extension state (rules, settings, legacy status)...");
+  await rulesManager.migrateRulesToLocalForDevice();
   
   await rulesManager.migrateRules();
   await SettingsManager.getSettings();

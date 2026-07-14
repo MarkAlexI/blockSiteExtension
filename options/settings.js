@@ -347,7 +347,7 @@ export class SettingsManager {
       if (rules_from_message) {
         rules = rules_from_message;
       } else {
-        const rulesResult = await chrome.storage.sync.get(['rules']);
+        const rulesResult = await chrome.storage.local.get(['rules']);
         rules = rulesResult.rules || [];
       }
       const el = document.getElementById('totalRules');
@@ -385,10 +385,11 @@ export class SettingsManager {
   
   async exportRules() {
     try {
-      const result = await chrome.storage.sync.get(['rules', 'settings']);
+      const resultSync = await chrome.storage.sync.get(['settings']);
+      const resultLocal = await chrome.storage.local.get(['rules']);
       const exportData = {
-        rules: result.rules || [],
-        settings: result.settings || this.defaultSettings,
+        rules: resultLocal.rules || [],
+        settings: resultSync.settings || this.defaultSettings,
         exportDate: new Date().toISOString(),
         version: chrome.runtime.getManifest().version
       };
@@ -468,15 +469,15 @@ export class SettingsManager {
         rules: rulesToSave
       };
       
+      const saveSettings = {};
+      
       if (importData.settings) {
-        saveData.settings = { ...this.defaultSettings, ...importData.settings };
+        saveSettings.settings = { ...this.defaultSettings, ...importData.settings };
+        await chrome.storage.sync.set(saveSettings);
+        this.applySettingsToUI(saveSettings.settings);
       }
       
-      await chrome.storage.sync.set(saveData);
-      
-      if (saveData.settings) {
-        this.applySettingsToUI(saveData.settings);
-      }
+      await chrome.storage.local.set(saveData);
       
       chrome.runtime.sendMessage({
         type: 'reload_rules'
@@ -501,7 +502,7 @@ export class SettingsManager {
   }
   
   async clearAllRules() {
-    const result = await chrome.storage.sync.get('rules');
+    const result = await chrome.storage.local.get('rules');
     const rulesCount = result.rules?.length || 0;
     
     if (rulesCount === 0) {

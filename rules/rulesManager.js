@@ -15,7 +15,7 @@ export class RulesManager {
   
   async getRules() {
     return new Promise((resolve) => {
-      chrome.storage.sync.get('rules', ({ rules }) => {
+      chrome.storage.local.get('rules', ({ rules }) => {
         resolve(rules || []);
       });
     });
@@ -23,7 +23,7 @@ export class RulesManager {
 
   async saveRules(rules) {
     await new Promise((resolve) => {
-      chrome.storage.sync.set({ rules }, resolve);
+      chrome.storage.local.set({ rules }, resolve);
     });
 
     chrome.runtime.sendMessage({
@@ -370,5 +370,38 @@ export class RulesManager {
       }
     });
     await this.saveRules(rules);
+  }
+
+  async migrateRulesToLocalForDevice() {
+    this.logger.log('Attempting device-specific rules migration from sync to local storage...');
+    try {
+      const localStatus = await chrome.storage.local.get("is_migrated_to_local");
+      
+      if (!localStatus.is_migrated_to_local) {
+        const syncData = await chrome.storage.sync.get("rules");
+        
+        if (syncData.rules && Array.isArray(syncData.rules) && syncData.rules.length > 0) {
+          this.logger.log(`Found ${syncData.rules.length} rules in sync storage. Migrating to local for this device.`);
+          await chrome.storage.local.set({ rules: syncData.rules });
+          await chrome.storage.local.set({ is_migrated_to_local: true });
+          this.logger.log('Rules successfully migrated to local storage on this device.');
+
+          await this.syncDnrRules();
+          
+          chrome.runtime.sendMessage({
+            type: 'reload_rules'
+          });
+          return true;
+        } else {
+          this.logger.log('No rules found in sync storage to migrate or rules are empty.');
+          await chrome.storage.local.set({ is_migrated_to_local: true });
+        }
+      } else {
+        this.logger.log('Rules already migrated to local storage on this device. Skipping sync migration.');
+      }
+    } catch (error) {
+      this.logger.error('Error during device-specific rules migration:', error);
+    }
+    return false;
   }
 }
