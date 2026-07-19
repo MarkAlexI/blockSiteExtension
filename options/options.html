@@ -55,7 +55,7 @@
             
             <form id="license-form">
               <label for="license-key-input" data-i18n="pastekeylabel">Paste your License Key here:</label>
-              <input type_="text" id="license-key-input" placeholder="BD-PRO-..." required autocomplete="off">
+              <input type="text" id="license-key-input" placeholder="BD-PRO-..." required autocomplete="off">
               <button type="submit" id="license-submit-btn">
                 <span data-i18n="activatepro">Activate Pro</span>
               </button>
@@ -303,11 +303,16 @@
         <option value="work" data-i18n="category_work">Work</option>
         <option value="gaming" data-i18n="category_gaming">Gaming</option>
         <option value="adult" data-i18n="category_adult">Adult</option>
+        <option value="whitelist" data-i18n="category_whitelist">Whitelist</option>
         <option value="uncategorized" data-i18n="category_uncategorized">Uncategorized</option>
       </select>
     </div>
+
+    <div class="rules-header-controls">
+      <button id="add-rule"></button>
+      <button id="add-whitelist-rule" title="Pro mode required" disabled></button>
+    </div>
     
-    <button id="add-rule"></button>
     <div class="table-wrapper">
       <table id="rules-table">
         <thead>

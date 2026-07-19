@@ -146,8 +146,8 @@ async function updateActiveRules() {
     const { focusActive } = await getFocusSessionState();
     const disabledCategories = settings.disabledCategories || [];
     const currentDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-    
-    const activeRules = rules.filter(rule => rulesManager.isRuleActiveNow(rule, disabledCategories, focusActive));
+
+    const activeRules = rules.filter(rule => !rule.isWhitelist && rulesManager.isRuleActiveNow(rule, disabledCategories, focusActive));
     const activeIds = new Set(activeRules.map(r => r.id));
     
     const removeRuleIds = currentDnrRules
@@ -226,8 +226,8 @@ async function validateDnrIntegrity() {
   try {
     const rules = await rulesManager.getRules();
     const dnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-    
-    const storageIds = new Set(rules.map(r => r.id));
+
+    const storageIds = new Set(rules.filter(r => !r.isWhitelist).map(r => r.id));
     const dnrIds = new Set(dnrRules.map(r => r.id));
     
     const isInSync = storageIds.size === dnrIds.size && [...storageIds].every(id => dnrIds.has(id));
