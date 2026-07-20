@@ -26,15 +26,15 @@ async function enforceFocusWhitelist(tabId, tabUrl) {
   if (isBlockedURL([{ url: tabUrl }])) {
     return;
   }
-
+  
   const { focusActive, focusMode } = await getFocusSessionState();
   if (!focusActive || focusMode !== 'whitelist') {
     return;
   }
-
+  
   const rules = await rulesManager.getRules();
   const whitelistRules = rules.filter(r => r.isWhitelist && !r.disabledByUser);
-
+  
   if (!isUrlInWhitelist(tabUrl, whitelistRules)) {
     logger.log(`Focus Whitelist: Closing non-whitelisted tab ${tabId} (${tabUrl})`);
     chrome.tabs.remove(tabId).catch(() => {});
@@ -47,7 +47,7 @@ async function enforceFocusWhitelist(tabId, tabUrl) {
 async function checkAllTabsAgainstWhitelist() {
   const rules = await rulesManager.getRules();
   const whitelistRules = rules.filter(r => r.isWhitelist && !r.disabledByUser);
-
+  
   await closeNonWhitelistedTabs(whitelistRules);
 }
 
@@ -179,39 +179,33 @@ async function updateActiveRules() {
     const settings = await SettingsManager.getSettings();
     const { focusActive } = await getFocusSessionState();
     const disabledCategories = settings.disabledCategories || [];
-    const currentDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
 
-    const activeRules = rules.filter(rule => !rule.isWhitelist && rulesManager.isRuleActiveNow(rule, disabledCategories, focusActive));
-    const activeIds = new Set(activeRules.map(r => r.id));
-    
-    const removeRuleIds = currentDnrRules
-      .map(r => r.id)
-      .filter(id => !activeIds.has(id));
-    if (removeRuleIds.length) {
-      await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds });
-    }
-    
-    const currentDnrIdSet = new Set(currentDnrRules.map(dnr => dnr.id));
+    const currentDnrRules = await chrome.declarativeNetRequest.getDynamicRules();
+    const removeRuleIds = currentDnrRules.map(r => r.id);
+
+    const activeRules = rules.filter(rule =>
+      !rule.isWhitelist && rulesManager.isRuleActiveNow(rule, disabledCategories, focusActive)
+    );
     
     const addRules = [];
     const urlsToClose = [];
-
+  
     for (const rule of activeRules) {
       urlsToClose.push(rule.blockURL);
       
-      if (!currentDnrIdSet.has(rule.id)) {
-        const dnrRule = await rulesManager.createDNRRule(rule.id, rule.blockURL, rule.redirectURL);
-        if (dnrRule) {
-          addRules.push(dnrRule);
-        }
+      const dnrRule = await rulesManager.createDNRRule(rule.id, rule.blockURL, rule.redirectURL);
+      if (dnrRule) {
+        addRules.push(dnrRule);
       }
     }
 
-    if (addRules.length) {
-      await chrome.declarativeNetRequest.updateDynamicRules({ addRules });
-      logger.log(`Added ${addRules.length} active scheduled rules`);
-    }
-
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds,
+      addRules
+    });
+    
+    logger.log(`DNR Rules updated: removed ${removeRuleIds.length}, added ${addRules.length}`);
+    
     if (urlsToClose.length > 0) {
       await closeTabsMatchingRules(urlsToClose);
     }
@@ -260,7 +254,7 @@ async function validateDnrIntegrity() {
   try {
     const rules = await rulesManager.getRules();
     const dnrRules = await chrome.declarativeNetRequest.getDynamicRules();
-
+    
     const storageIds = new Set(rules.filter(r => !r.isWhitelist).map(r => r.id));
     const dnrIds = new Set(dnrRules.map(r => r.id));
     
@@ -314,7 +308,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (urlToCheck) {
     await enforceFocusWhitelist(tabId, urlToCheck);
   }
-
+  
   if (changeInfo.status === 'complete' && tab.url) {
     await trackBlockedPage(tab.url);
   }
@@ -324,7 +318,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   if (tab.id && tab.url) {
     await enforceFocusWhitelist(tab.id, tab.url);
   }
-
+  
   if (tab.url && tab.url !== 'about:blank' && tab.url !== 'chrome://newtab/') {
     await trackBlockedPage(tab.url);
   }
@@ -577,7 +571,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.alarms.create('end_focus_session', { delayInMinutes: durationMinutes });
         
         await updateActiveRules();
-
+        
         if (focusMode === 'whitelist') {
           await checkAllTabsAgainstWhitelist();
         }
@@ -678,7 +672,7 @@ function ensureAlarmsCreated() {
       });
     }
   });
-
+  
   chrome.alarms.get('update_scheduled_rules', (alarm) => {
     if (!alarm) {
       chrome.alarms.create('update_scheduled_rules', {
