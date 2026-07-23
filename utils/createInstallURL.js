@@ -1,14 +1,5 @@
 export function createInstallURL() {
-  const base = "https://blockdistraction.com/";
+  const url = chrome.runtime.getURL('options/options.html');
   
-  const browser = "chrome";
-  const version = chrome.runtime.getManifest().version;
-  
-  const params = new URLSearchParams({
-    src: "extension",
-    browser: browser,
-    ext_version: version
-  });
-  
-  return `${base}?${params.toString()}`;
+  return url;
 }
