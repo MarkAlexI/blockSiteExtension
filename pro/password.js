@@ -58,11 +58,27 @@ export class PasswordUtils {
       input1.onkeydown = null;
     };
     
-    cancelBtn.onclick = closeModal;
+    let callbackCompleted = false;
+    const finish = (result) => {
+      if (callbackCompleted) return;
+      callbackCompleted = true;
+      callback(result);
+      closeModal();
+    };
+    
+    const cancelModal = () => {
+      if (type === 'verify') {
+        finish(false);
+      } else {
+        closeModal();
+      }
+    };
+    
+    cancelBtn.onclick = cancelModal;
     
     input1.onkeydown = (e) => {
       if (e.key === 'Enter') confirmBtn.click();
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') cancelModal();
     };
     
     confirmBtn.onclick = async () => {
@@ -82,8 +98,7 @@ export class PasswordUtils {
           return;
         }
         const hash = await this.hashPassword(val1);
-        callback(hash);
-        closeModal();
+        finish(hash);
       } else {
         const settings = await chrome.storage.sync.get(['settings']);
         const storedHash = settings.settings ? settings.settings.passwordHash : null;
@@ -97,8 +112,7 @@ export class PasswordUtils {
           return;
         }
         
-        callback(true);
-        closeModal();
+        finish(true);
       }
     };
     
