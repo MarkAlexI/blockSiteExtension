@@ -416,8 +416,6 @@ export class RulesManager {
           await chrome.storage.local.set({ is_migrated_to_local: true });
           this.logger.log('Rules successfully migrated to local storage on this device.');
           
-          await this.syncDnrRules();
-          
           chrome.runtime.sendMessage({
             type: 'reload_rules'
           });
