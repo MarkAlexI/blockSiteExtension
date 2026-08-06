@@ -44,6 +44,10 @@ export class RulesClient {
     return sendRulesIntent('rules:add', payload);
   }
 
+  addMany(packId, entryIds) {
+    return sendRulesIntent('rules:addMany', { packId, entryIds });
+  }
+
   updateRule(payload) {
     return sendRulesIntent('rules:update', payload);
   }
