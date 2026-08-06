@@ -23,12 +23,31 @@ import { RULES_INTENT_TYPES, createRulesIntentHandler } from '../rules/rulesInte
 import { resolveRulePackEntries } from '../rules/rulePacks.js';
 import { createDiagnosticStore } from '../diagnostics/diagnosticStore.js';
 import { buildDiagnosticReport, detectBrowserSummary } from '../diagnostics/diagnosticReport.js';
+import { createHostPermissionMonitor, affectsRequiredHostAccess } from '../utils/hostPermissionMonitor.js';
 
 const logger = new Logger('Worker');
 const rulesManager = new RulesManager();
 const diagnosticStore = createDiagnosticStore({
   localStorage: chrome.storage.local,
-  getSettings: () => SettingsManager.getSettings()
+  getSettings: async () => {
+    const [settings, isPro, isLegacyUser] = await Promise.all([
+      SettingsManager.getSettings(),
+      ProManager.isPro(),
+      ProManager.isLegacyUser()
+    ]);
+    return {
+      ...settings,
+      debugMode: settings.debugMode === true && (isPro || isLegacyUser)
+    };
+  }
+});
+
+const hostPermissionMonitor = createHostPermissionMonitor({
+  permissionsApi: chrome.permissions,
+  tabsApi: chrome.tabs,
+  runtimeApi: chrome.runtime,
+  diagnosticStore,
+  logger
 });
 
 async function recordDnrSyncResult(result) {
@@ -395,7 +414,7 @@ chrome.runtime.onStartup.addListener(async () => {
   ensureAlarmsCreated();
   
   await initializeExtension({ reason: 'startup' });
-  await checkAndRequestPermissions({ reason: 'startup' });
+  await checkAndRequestPermissions({ reason: 'startup' }, { notifyIfMissing: true });
   
   logger.log("Extension startup - syncing DNR rules");
   await dnrSynchronizer.requestSync();
@@ -458,97 +477,48 @@ async function initializeExtension(details) {
   }
 }
 
-let isCheckingPermissions = false;
-
-async function checkAndRequestPermissions(details) {
-  if (isCheckingPermissions) return;
-  isCheckingPermissions = true;
-  
-  try {
-    let granted;
-    if (typeof chrome.permissions?.contains === 'function') {
-      granted = await chrome.permissions.contains({
-        origins: ["*://*/*"]
-      });
-    } else {
-      logger.warn("Permissions API not available. Assuming granted.");
-      granted = true;
-    }
-    
-    await diagnosticStore.updateState({
-      lastPermissionCheck: {
-        timestamp: Date.now(),
-        hostAccess: granted,
-        reason: details?.reason || 'unknown'
-      }
-    });
-
-    if (!granted) {
-      await diagnosticStore.recordEvent('warn', 'permissions', 'host_access_missing', {
-        reason: details?.reason || 'unknown'
-      });
-      logger.log("Host permission NOT granted. Opening onboarding page.");
-      const onboardingUrl = chrome.runtime.getURL('onboarding/onboarding.html');
-      const tabs = await chrome.tabs.query({ url: onboardingUrl });
-      
-      if (tabs.length === 0) {
-        chrome.tabs.create({ url: onboardingUrl });
-      }
-    }
-    
-    return granted;
-  } catch (err) {
-    logger.error("Error checking permissions:", err);
-    await diagnosticStore.updateState({
-      lastPermissionCheck: {
-        timestamp: Date.now(),
-        hostAccess: false,
-        reason: details?.reason || 'unknown',
-        error: err?.message || String(err)
-      }
-    });
-    await diagnosticStore.recordEvent('error', 'permissions', 'check_failed', {
-      reason: details?.reason || 'unknown',
-      error: err
-    });
-    return false;
-  } finally {
-    isCheckingPermissions = false;
-  }
+async function checkAndRequestPermissions(details, options = {}) {
+  const result = await hostPermissionMonitor.check({
+    reason: details?.reason || 'unknown',
+    notifyIfMissing: options.notifyIfMissing === true,
+    assumeMissing: options.assumeMissing === true
+  });
+  return result.granted;
 }
 
-if (chrome.permissions && chrome.permissions.onRemoved) {
-  chrome.permissions.onRemoved.addListener(async (permissions) => {
-    if (permissions.origins && permissions.origins.includes("*://*/*")) {
-      logger.warn("Host permission revoked by user or browser. Opening onboarding.");
-      
-      const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('onboarding/onboarding.html') });
-      if (tabs.length === 0) {
-        chrome.tabs.create({
-          url: chrome.runtime.getURL('onboarding/onboarding.html')
-        });
-      }
+if (chrome.permissions?.onRemoved) {
+  chrome.permissions.onRemoved.addListener(async permissions => {
+    if (affectsRequiredHostAccess(permissions.origins)) {
+      await checkAndRequestPermissions(
+        { reason: 'permission_removed' },
+        { notifyIfMissing: true, assumeMissing: true }
+      );
     }
   });
 }
 
-async function ensureDiagnosticsAccess() {
+if (chrome.permissions?.onAdded) {
+  chrome.permissions.onAdded.addListener(async permissions => {
+    if (affectsRequiredHostAccess(permissions.origins)) {
+      await checkAndRequestPermissions({ reason: 'permission_added' });
+    }
+  });
+}
+
+async function getDiagnosticsAccess() {
   const [isPro, isLegacyUser] = await Promise.all([
     ProManager.isPro(),
     ProManager.isLegacyUser()
   ]);
-
-  if (!isPro && !isLegacyUser) {
-    const error = new Error('Pro mode is required for diagnostics');
-    error.code = 'pro_required';
-    throw error;
-  }
-
-  return { isPro, isLegacyUser };
+  return {
+    isPro,
+    isLegacyUser,
+    eventHistory: isPro || isLegacyUser
+  };
 }
 
 async function createDiagnosticReport() {
-  const access = await ensureDiagnosticsAccess();
+  const access = await getDiagnosticsAccess();
   const [settings, rules, credentials, focusSession] = await Promise.all([
     SettingsManager.getSettings(),
     rulesManager.getRules(),
@@ -610,7 +580,7 @@ async function createDiagnosticReport() {
     },
     access,
     settings: {
-      debugMode: settings.debugMode === true,
+      debugMode: settings.debugMode === true && access.eventHistory,
       mode: settings.mode || 'normal',
       disabledCategories: Array.isArray(settings.disabledCategories) ?
         settings.disabledCategories : []
@@ -641,7 +611,7 @@ async function createDiagnosticReport() {
       expiryDate: credentials.expiryDate || null,
       lastCheck: snapshot.state.lastLicenseCheck || null
     },
-    recentEvents: snapshot.events
+    recentEvents: access.eventHistory ? snapshot.events : []
   });
 }
 
@@ -655,7 +625,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     logger.log("This is a fresh install. Checking permissions...");
     await initializeExtension(details);
-    await checkAndRequestPermissions(details);
+    await checkAndRequestPermissions(details, { notifyIfMissing: true });
     
     const installUrl = createInstallURL();
     chrome.tabs.create({
@@ -665,12 +635,12 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   } else if (details.reason === 'update') {
     logger.log("This is an update. Checking permissions...");
     await initializeExtension(details);
-    await checkAndRequestPermissions(details);
+    await checkAndRequestPermissions(details, { notifyIfMissing: true });
   } else if (details.reason === 'chrome_update' || details.reason === 'browser_update') {
     logger.log("Browser updated.");
     await initializeExtension(details);
     await dnrSynchronizer.validateIntegrity();
-    await checkAndRequestPermissions(details);
+    await checkAndRequestPermissions(details, { notifyIfMissing: true });
   } else if (details.reason === 'shared_module_update') {
     logger.log("Shared module updated.");
   }
@@ -719,7 +689,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'diagnostics:clearHistory') {
     (async () => {
       try {
-        await ensureDiagnosticsAccess();
         await diagnosticStore.clearEvents();
         sendResponse({ success: true });
       } catch (error) {
@@ -936,7 +905,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
   
   if (alarm.name === 'update_scheduled_rules') {
-    await dnrSynchronizer.requestSync();
+    await Promise.all([
+      dnrSynchronizer.requestSync(),
+      checkAndRequestPermissions({ reason: 'scheduled_alarm' })
+    ]);
   }
 });
 
