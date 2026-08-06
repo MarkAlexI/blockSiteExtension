@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - 2026-08-05
+### Added
+- Added advanced Pro schedules with separate time groups for different days of the week.
+- Added quick schedule presets for every day, weekdays, and weekends.
+- Added a dedicated schedule editor that keeps long rule rows compact while supporting multiple day and time groups.
+
+### Improved
+- Kept all existing single-period schedules fully compatible without a bulk migration.
+- Updated schedule summaries in the Options page and popup to display multiple time groups clearly.
+- Added dependency-free tests for schedule normalization, validation, presets, formatting, and activation.
+
 ## [4.3.3] - 2026-08-05
 ### Fixed
 - Fixed category blocking controls on the Options page toggling twice and immediately restoring their previous state.
@@ -18,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a touch-device hint explaining how to block a copied link when a mobile browser does not provide an extension context menu.
 - Clarified redirect validation by reminding users to enter a complete URL including `https://` or leave the field empty for normal blocking.
 
-## [4.3.1] - 2026-08-05
+## [4.3.1] - 2026-08-04
 ### Improved
 - Reduced `RulesManager` to current rule storage, validation, duplicate detection, and conflict checks.
 - Moved legacy rule migrations into a dedicated service with explicit storage dependencies.

@@ -1,6 +1,7 @@
 import { isValidURL } from '../scripts/isValidURL.js';
 import { isValidPathSegment } from '../scripts/isValidPathSegment.js';
 import { isBlockedURL } from '../scripts/isBlockedURL.js';
+import { validateSchedule } from '../schedules/scheduleValidator.js';
 
 /**
  * Provides current rule storage and domain validation helpers.
@@ -43,29 +44,8 @@ export class RulesManager {
     }
 
     if (!isWhitelist && schedule) {
-      if (
-        !Array.isArray(schedule.days) ||
-        schedule.days.some(day =>
-          day < 0 || day > 6 || !Number.isInteger(day)
-        )
-      ) {
-        errors.push('invalid_days');
-      }
-
-      const hasValidTimeFormat =
-        /^([01]\d|2[0-3]):([0-5]\d)$/.test(schedule.startTime) &&
-        /^([01]\d|2[0-3]):([0-5]\d)$/.test(schedule.endTime);
-
-      if (!hasValidTimeFormat) {
-        errors.push('invalid_time_format');
-      } else {
-        const [startH, startM] = schedule.startTime.split(':').map(Number);
-        const [endH, endM] = schedule.endTime.split(':').map(Number);
-
-        if (startH * 60 + startM >= endH * 60 + endM) {
-          errors.push('start_after_end');
-        }
-      }
+      const scheduleValidation = validateSchedule(schedule);
+      errors.push(...scheduleValidation.errors);
     }
 
     if (!isWhitelist && !category) {

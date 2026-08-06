@@ -6,7 +6,7 @@
   "author": "MarkAlexI",
   "homepage_url": "https://blockdistraction.com",
   "default_locale": "en",
-  "version": "4.3.3",
+  "version": "4.4.0",
   "icons": {
     "16": "images/icon-16.png",
     "32": "images/icon-32.png",
@@ -20,7 +20,9 @@
     "contextMenus",
     "notifications"
   ],
-  "host_permissions": ["*://*/*"],
+  "host_permissions": [
+    "*://*/*"
+  ],
   "action": {
     "default_icon": {
       "16": "images/icon-16.png",
@@ -35,20 +37,23 @@
     "type": "module"
   },
   "web_accessible_resources": [
-  {
-    "resources": [
-      "blocked.html",
-      "styles/blocked.css",
-      "scripts/blocked.js",
-      "redirect.html",
-      "styles/redirect.css",
-      "scripts/redirect.js",
-      "onboarding/onboarding.html",
-      "onboarding/onboarding.css",
-      "onboarding/onboarding.js"
-    ],
-    "matches": ["<all_urls>"]
-  }],
+    {
+      "resources": [
+        "blocked.html",
+        "styles/blocked.css",
+        "scripts/blocked.js",
+        "redirect.html",
+        "styles/redirect.css",
+        "scripts/redirect.js",
+        "onboarding/onboarding.html",
+        "onboarding/onboarding.css",
+        "onboarding/onboarding.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
   "content_security_policy": {
     "extension_pages": "default-src 'self'; style-src 'self'; img-src 'self' https://* http://* data:; script-src 'self'; connect-src 'self' https://blockdistraction.com;"
   },
