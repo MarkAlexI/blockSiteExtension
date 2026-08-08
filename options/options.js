@@ -15,6 +15,10 @@ import { initFeedbackPopup } from './feedback.js';
 import { isVisibleRuleGroupEnd } from '../rules/visibleRuleGrouping.js';
 import { RulePacksUI } from './rulePacksUI.js';
 import { DiagnosticsUI } from './diagnosticsUI.js';
+import { installPageErrorReporter } from '../telemetry/pageErrorReporter.js';
+import { TelemetryUI } from './telemetryUI.js';
+
+installPageErrorReporter('options');
 
 const logger = new Logger('OptionsPage');
 
@@ -76,6 +80,21 @@ class OptionsPage {
       }
     });
     
+    this.telemetryUI = new TelemetryUI({
+      checkbox: document.getElementById('telemetryConsent'),
+      status: document.getElementById('telemetry-status'),
+      onGetConsent: async () => {
+        const response = await sendRuntimeMessage({ type: 'telemetry:getConsent' });
+        if (!response?.success) throw new Error('Failed to read telemetry consent');
+        return response.consent;
+      },
+      onSetConsent: async enabled => {
+        const response = await sendRuntimeMessage({ type: 'telemetry:setConsent', enabled });
+        if (!response?.success) throw new Error('Failed to update telemetry consent');
+        return response.consent;
+      }
+    });
+
     this.isPro = false;
     this.isLegacyUser = false;
     
@@ -92,6 +111,7 @@ class OptionsPage {
     this.setupEventListeners();
     this.rulePacksUI.initialize();
     this.diagnosticsUI.initialize();
+    await this.telemetryUI.initialize();
     try {
       this.isPro = await ProManager.isPro();
       this.isLegacyUser = await ProManager.isLegacyUser();
