@@ -49,6 +49,8 @@ Telemetry is disabled by default. The extension does not create telemetry bucket
 
 The client never sends an installation identifier, rule content, browsing data, URLs, email addresses, license keys, passwords, raw error messages, filenames, or stack traces.
 
+The coarse `context` is captured with the local UTC-day bucket when that bucket is first created. If queued days have different captured contexts (for example, because the extension was updated or access changed before delivery), the client sends separate schema-v1 requests so each day keeps the context recorded at collection time. Legacy 4.8.0 buckets without stored context use the current coarse context as a delivery fallback.
+
 ## Response
 
 Accept all batches:

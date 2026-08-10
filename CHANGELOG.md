@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.1] - 2026-08-10
+### Fixed
+- Preserved the specific controlled rule failure code in technical telemetry instead of collapsing every rejected rule mutation into `intent_failed`.
+- Persisted telemetry bucket context when a UTC-day bucket is first created so queued events keep the version, browser, access tier, locale, platform, OS, and installation-age context from collection time.
+- Physically removed telemetry buckets older than the documented seven-day local retention window when the queue is inspected.
+- Added a real one-shot telemetry retry alarm so exponential delivery backoff is no longer dependent on the next daily maintenance wake-up.
+- Prevented successful delivery acknowledgements from deleting new same-day telemetry events that were recorded while a request was in flight.
+
+### Improved
+- Kept the wire protocol unchanged by grouping pending buckets by their captured context and sending separate compatible batches when necessary.
+- Added delivery retry details to the privacy-safe Diagnostic Report.
+- Added regression tests for rule error classification, context preservation, persisted retention cleanup, context-grouped delivery, and retry scheduling.
+
 ## [4.8.0] - 2026-08-07
 ### Added
 - Added opt-in privacy-preserving technical analytics for the Chromium build, disabled by default.
