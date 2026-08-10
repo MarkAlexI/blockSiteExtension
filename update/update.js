@@ -1,3 +1,5 @@
+import { getStoreConfig } from '../utils/storeTarget.js';
+
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(location.search);
   const version = params.get('version') || '–';
@@ -17,9 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ul.append(li);
   });
   
-  if (chrome.runtime.id === 'ilmfjlfmilmafofbanphijmbklbmolhi') {
-    document.getElementById('store_link').setAttribute('href', 'https://microsoftedge.microsoft.com/addons/detail/ilmfjlfmilmafofbanphijmbklbmolhi');
-  }
+  const store = getStoreConfig();
+  document.getElementById('store_link')?.setAttribute('href', store.reviewUrl);
   
   document.getElementById('privacy-settings-btn')?.addEventListener('click', () => {
     chrome.runtime.openOptionsPage?.();

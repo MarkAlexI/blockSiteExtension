@@ -11,7 +11,6 @@ import { initializeNoSpaceInputs } from '../utils/noSpaces.js';
 import Logger from '../utils/logger.js';
 import { MAX_RULES_LIMIT } from '../utils/constants.js';
 import { checkDNR } from '../utils/dnrDebug.js';
-import { initFeedbackPopup } from './feedback.js';
 import { isVisibleRuleGroupEnd } from '../rules/visibleRuleGrouping.js';
 import { RulePacksUI } from './rulePacksUI.js';
 import { DiagnosticsUI } from './diagnosticsUI.js';
@@ -500,5 +499,4 @@ chrome.runtime.onMessage.addListener((message) => {
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeNoSpaceInputs();
-  initFeedbackPopup();
 });

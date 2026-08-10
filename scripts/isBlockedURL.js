@@ -1,3 +1,5 @@
+import { getStoreProtectedPatterns } from '../utils/storeTarget.js';
+
 /**
  * Checks whether the current tab URL is blocked from processing.
  *
@@ -20,17 +22,15 @@ export function isBlockedURL(tabs) {
     /extension:\/\//,
     /^https:\/\/chrome\.google\.com\/webstore/,
     /^https:\/\/chromewebstore\.google\.com/,
-    /^edge:\/\//,
     /^kiwi:\/\//,
     /^devtools:/,
     /^view-source:/,
     /blockdistraction/,
     /markdigital/,
     /ext\.pp\.ua/,
-    /microsoft/,
-    /bing\.com/,
     /\/\/newtab/
   ];
-  
-  return blockedPatterns.some(pattern => pattern.test(url));
+
+  const storePatterns = getStoreProtectedPatterns();
+  return [...blockedPatterns, ...storePatterns].some(pattern => pattern.test(url));
 }

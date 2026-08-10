@@ -22,12 +22,19 @@ jobs:
       - name: Run tests and validation
         run: npm run check
 
-      - name: Build store package
-        run: npm run package:store
+      - name: Build CWS and Edge packages
+        run: npm run package:stores
 
-      - name: Upload store package
+      - name: Upload Chrome Web Store package
         uses: actions/upload-artifact@v4
         with:
-          name: blockdistraction-store-${{ github.sha }}
-          path: dist/*.zip
+          name: blockdistraction-cws-${{ github.sha }}
+          path: dist/*-cws.zip
+          retention-days: 14
+
+      - name: Upload Edge Add-ons package
+        uses: actions/upload-artifact@v4
+        with:
+          name: blockdistraction-edge-${{ github.sha }}
+          path: dist/*-edge.zip
           retention-days: 14

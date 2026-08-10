@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.2] - 2026-08-10
+### Changed
+- Replaced the old positive/negative review gate with one neutral feedback prompt in the popup that offers the store review page and support side by side.
+- Moved automatic feedback prompting out of the Options page so regular popup users can actually see it.
+- Show the prompt only after at least seven days and meaningful local use: two saved rules, five handled blocks/redirects, or one completed Focus Session.
+- Limit automatic feedback prompting to two displays per installation, with a fourteen-day snooze after the first display.
+- Preserve completed legacy feedback state so users who already responded are not prompted again after the migration.
+- Store new feedback prompt state locally instead of synchronizing it across browser installations.
+
+### Improved
+- Added a Chrome-first store target adapter for review links, update-page links, and store-specific protected URLs.
+- Scoped Microsoft/Bing URL protection to Edge instead of applying those restrictions to the Chrome build as well.
+- Added separate CWS and Microsoft Edge Add-ons build targets without creating separate source trees.
+- Updated GitHub Actions to build and upload two store artifacts from the same tested commit.
+- Added regression tests for feedback eligibility, snoozing, legacy migration, store routing, and Edge-only URL restrictions.
+
 ## [4.8.1] - 2026-08-10
 ### Fixed
 - Preserved the specific controlled rule failure code in technical telemetry instead of collapsing every rejected rule mutation into `intent_failed`.

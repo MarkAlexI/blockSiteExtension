@@ -25,6 +25,7 @@ const runtimePaths = [
   'blocked.html',
   'diagnostics',
   'dom',
+  'feedback',
   'images',
   'index.html',
   'manifest.json',
@@ -44,58 +45,89 @@ const runtimePaths = [
 
 for (const entry of runtimePaths) {
   const absolutePath = path.join(rootDir, entry);
-  
+
   if (!existsSync(absolutePath)) {
     throw new Error(`Required runtime path is missing: ${entry}`);
   }
 }
 
+const requestedTarget = String(process.argv[2] || 'chrome').toLowerCase();
+const targets = requestedTarget === 'all'
+  ? ['chrome', 'edge']
+  : [requestedTarget];
+
+for (const target of targets) {
+  if (!['chrome', 'edge'].includes(target)) {
+    throw new Error(`Unsupported store target: ${target}`);
+  }
+}
+
 const distDir = path.join(rootDir, 'dist');
+rmSync(distDir, { recursive: true, force: true });
+mkdirSync(distDir, { recursive: true });
 
-rmSync(distDir, {
-  recursive: true,
-  force: true
-});
+const storeTargetPath = path.join(rootDir, 'utils', 'storeTarget.js');
+const defaultStoreTargetSource = readFileSync(storeTargetPath, 'utf8');
 
-mkdirSync(distDir, {
-  recursive: true
-});
+if (!defaultStoreTargetSource.includes("export const STORE_TARGET = 'chrome';")) {
+  throw new Error('utils/storeTarget.js must default to the Chrome target.');
+}
 
-const archiveName =
-  `BlockDistraction-${manifest.version}-store.zip`;
+function targetSource(target) {
+  if (target === 'chrome') return defaultStoreTargetSource;
 
-const archivePath = path.join(distDir, archiveName);
+  return defaultStoreTargetSource.replace(
+    "export const STORE_TARGET = 'chrome';",
+    "export const STORE_TARGET = 'edge';"
+  );
+}
 
-/*
- * Build the package directly from the checked-out Git commit.
- *
- * Only explicitly allowed runtime files and directories are included.
- * Development files such as tests/, tools/, docs/, .github/,
- * package.json and README.md cannot enter the store package.
- */
-execFileSync(
-  'git',
-  [
+function archiveTarget(target) {
+  const suffix = target === 'chrome' ? 'cws' : 'edge';
+  const archiveName = `BlockDistraction-${manifest.version}-${suffix}.zip`;
+  const archivePath = path.join(distDir, archiveName);
+
+  const gitArgs = [
     'archive',
     '--format=zip',
     '--output',
-    archivePath,
-    'HEAD',
-    '--',
-    ...runtimePaths
-  ],
-  {
+    archivePath
+  ];
+
+  if (target === 'edge') {
+    gitArgs.push(
+      `--add-virtual-file=utils/storeTarget.js:${targetSource(target)}`
+    );
+  }
+
+  gitArgs.push('HEAD', '--', ...runtimePaths);
+
+  if (target === 'edge') {
+    gitArgs.push(':(exclude)utils/storeTarget.js');
+  }
+
+  execFileSync('git', gitArgs, {
     cwd: rootDir,
     stdio: 'inherit'
+  });
+
+  const archive = readFileSync(archivePath);
+  const sha256 = createHash('sha256').update(archive).digest('hex');
+
+  console.log('');
+  console.log(`Created: dist/${archiveName}`);
+  console.log(`Target: ${target}`);
+  console.log(`SHA-256: ${sha256}`);
+
+  return { target, archiveName, archivePath, sha256 };
+}
+
+const results = targets.map(archiveTarget);
+
+if (results.length === 2) {
+  console.log('');
+  console.log('Store packages are ready:');
+  for (const result of results) {
+    console.log(`- ${result.target}: dist/${result.archiveName}`);
   }
-);
-
-const archive = readFileSync(archivePath);
-
-const sha256 = createHash('sha256')
-  .update(archive)
-  .digest('hex');
-
-console.log('');
-console.log(`Created: dist/${archiveName}`);
-console.log(`SHA-256: ${sha256}`);
+}
