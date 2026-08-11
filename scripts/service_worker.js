@@ -866,6 +866,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'telemetry:incrementCounter') {
+    (async () => {
+      try {
+        const recorded = await telemetryStore.incrementCounter(message.name);
+        sendResponse({ success: true, recorded });
+      } catch {
+        sendResponse({
+          success: false,
+          recorded: false,
+          error: { code: 'telemetry_counter_failed' }
+        });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === 'telemetry:recordError') {
     (async () => {
       await telemetryStore.recordError(message.payload || {});

@@ -1,5 +1,6 @@
 import { SUPPORT_LINK } from '../utils/constants.js';
 import { getStoreConfig } from '../utils/storeTarget.js';
+import { recordTelemetryCounter } from '../telemetry/telemetryCounterReporter.js';
 
 export const FEEDBACK_STATE_KEY = 'feedbackPromptState';
 export const FEEDBACK_INITIAL_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -177,7 +178,8 @@ export async function initFeedbackPrompt({
   syncStorage = globalThis.chrome?.storage?.sync,
   tabsApi = globalThis.chrome?.tabs,
   now = () => Date.now(),
-  getStore = () => getStoreConfig()
+  getStore = () => getStoreConfig(),
+  recordCounter = recordTelemetryCounter
 } = {}) {
   const dialog = documentRef?.getElementById('feedback-dialog');
   if (!dialog || !localStorage || !syncStorage || !tabsApi) return false;
@@ -207,6 +209,7 @@ export async function initFeedbackPrompt({
   async function dismiss() {
     if (finalized) return;
     finalized = true;
+    recordCounter('feedback_dismissed');
     state = await controller.markDismissed(state);
     dialog.close();
   }
@@ -233,6 +236,7 @@ export async function initFeedbackPrompt({
   reviewButton?.addEventListener('click', async () => {
     if (finalized) return;
     finalized = true;
+    recordCounter('feedback_review_clicked');
     state = await controller.openReview(state);
     dialog.close();
   }, { once: true });
@@ -240,10 +244,12 @@ export async function initFeedbackPrompt({
   supportButton?.addEventListener('click', async () => {
     if (finalized) return;
     finalized = true;
+    recordCounter('feedback_support_clicked');
     state = await controller.openSupport(state);
     dialog.close();
   }, { once: true });
 
   dialog.showModal();
+  recordCounter('feedback_prompt_shown');
   return true;
 }
