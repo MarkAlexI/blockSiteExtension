@@ -52,6 +52,10 @@ export class RulesClient {
     return sendRulesIntent('rules:update', payload);
   }
 
+  removeAssignment(ruleId, listId) {
+    return sendRulesIntent('rules:removeAssignment', { ruleId, listId });
+  }
+
   deleteRule(ruleId) {
     return sendRulesIntent('rules:delete', { ruleId });
   }
