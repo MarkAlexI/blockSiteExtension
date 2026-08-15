@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.0] - 2026-08-15
+### Added
+- Added Pro Rule Lists for organizing blocking rules into named lists such as Work or Study.
+- Added per-rule list assignment, whole-list pause/resume controls, list filtering, and Rule List management in Options.
+- Added device-local Rule List import/export and automatic migration of existing rules to the built-in General list.
+- Added Rule List interface strings across all supported locales.
+
+### Improved
+- Integrated disabled Rule Lists with the existing DNR self-healing flow without changing the one-minute scheduling alarm.
+- Deleting a custom Rule List now safely moves its rules to General instead of deleting them.
+- Popup rule rows now identify custom Rule Lists and reflect paused-list state.
+- Added regression coverage for Rule List storage, migration, mutation intents, DNR activation, UI behavior, import/export contracts, and localization.
+
 ## [4.8.7] - 2026-08-13
 ### Fixed
 - Stopped transient license verification failures such as network errors, timeouts, rate limits, server errors, and invalid transient responses from being counted as extension reliability errors in opt-in telemetry.
