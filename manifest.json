@@ -16,6 +16,7 @@
     "declarativeNetRequestWithHostAccess",
     "storage",
     "tabs",
+    "scripting",
     "alarms",
     "contextMenus",
     "notifications"
