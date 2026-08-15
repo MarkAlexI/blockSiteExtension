@@ -19,6 +19,8 @@ import { createDnrRuleFactory } from '../rules/dnrRuleFactory.js';
 import { isRuleActiveNow } from '../rules/ruleActivation.js';
 import { createRulesMigrationService } from '../rules/rulesMigrationService.js';
 import { RuleListsManager } from '../rules/ruleListsManager.js';
+import { DailyLimitManager } from '../rules/dailyLimitManager.js';
+import { createDailyLimitTracker } from '../rules/dailyLimitTracker.js';
 import { createRulesMutationService, serializeRulesMutationError } from '../rules/rulesMutationService.js';
 import { RULES_INTENT_TYPES, createRulesIntentHandler } from '../rules/rulesIntentRouter.js';
 import { resolveRulePackEntries } from '../rules/rulePacks.js';
@@ -35,6 +37,7 @@ import { shouldRecordLicenseReliabilityError } from '../telemetry/telemetryLicen
 const logger = new Logger('Worker');
 const rulesManager = new RulesManager();
 const ruleListsManager = new RuleListsManager(chrome.storage.local);
+const dailyLimitManager = new DailyLimitManager(chrome.storage.local);
 const diagnosticStore = createDiagnosticStore({
   localStorage: chrome.storage.local,
   getSettings: async () => {
@@ -157,6 +160,7 @@ const dnrSynchronizer = createDnrSynchronizer({
   getRules: () => rulesManager.getRules(),
   getSettings: () => SettingsManager.getSettings(),
   getRuleLists: () => ruleListsManager.getLists(),
+  getDailyUsage: () => dailyLimitManager.getUsageSeconds(),
   getFocusSessionState,
   isRuleActiveNow,
   createDnrRule,
@@ -164,6 +168,18 @@ const dnrSynchronizer = createDnrSynchronizer({
   declarativeNetRequest: chrome.declarativeNetRequest,
   logger,
   onSyncResult: recordDnrSyncResult
+});
+
+const dailyLimitTracker = createDailyLimitTracker({
+  tabsApi: chrome.tabs,
+  windowsApi: chrome.windows,
+  getRules: () => rulesManager.getRules(),
+  getSettings: () => SettingsManager.getSettings(),
+  getRuleLists: () => ruleListsManager.getLists(),
+  getFocusSessionState,
+  dailyLimitManager,
+  dnrSynchronizer,
+  logger
 });
 
 const rulesMigrationService = createRulesMigrationService({
@@ -481,11 +497,20 @@ async function handleProStatusUpdate(isPro, subscriptionData = {}) {
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     await enforceFocusWhitelist(tabId, changeInfo.url);
+    if (tab.active) await dailyLimitTracker.sample('tab_url_changed');
   }
   
   if (changeInfo.status === 'complete' && tab.url) {
     await trackBlockedPage(tab.url);
   }
+});
+
+chrome.tabs.onActivated.addListener(() => {
+  void dailyLimitTracker.sample('tab_activated');
+});
+
+chrome.windows.onFocusChanged.addListener(() => {
+  void dailyLimitTracker.sample('window_focus_changed');
 });
 
 chrome.tabs.onCreated.addListener(async (tab) => {
@@ -509,6 +534,7 @@ chrome.runtime.onStartup.addListener(async () => {
   await initializeExtension({ reason: 'startup' });
   await checkAndRequestPermissions({ reason: 'startup' }, { notifyIfMissing: true });
   
+  await dailyLimitTracker.sample('startup');
   logger.log("Extension startup - syncing DNR rules");
   await dnrSynchronizer.requestSync();
   
@@ -528,6 +554,10 @@ async function initializeExtension(details) {
   logger.log("Initializing extension state (rules, settings, legacy status)...");
   const migrationResult = await rulesMutationService.runExclusive(
     () => rulesMigrationService.migrateAll()
+  );
+
+  await dailyLimitManager.pruneRuleIds(
+    (migrationResult.rules || []).map(rule => rule.id)
   );
 
   if (migrationResult.migrated) {
@@ -790,7 +820,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const result = await handleRulesIntent(message);
-        await recordRuleIntentTelemetry(message.type, result);
+        await dailyLimitManager.pruneRuleIds(
+          (result.rules || []).map(rule => rule.id)
+        );
+        await Promise.all([
+          recordRuleIntentTelemetry(message.type, result),
+          dailyLimitTracker.sample('rules_intent')
+        ]);
         sendResponse({ success: true, ...result });
       } catch (error) {
         logger.error(`Rules intent failed (${message.type}):`, error);
@@ -1011,11 +1047,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const focusMode = message.focusMode || 'blacklist';
         const endTime = Date.now() + durationMinutes * 60 * 1000;
         
+        await dailyLimitTracker.sample('focus_start_before');
         await chrome.storage.local.set({
           focusSession: { focusActive: true, focusEndTime: endTime, isHardcore, focusMode }
         });
         
         chrome.alarms.create('end_focus_session', { delayInMinutes: durationMinutes });
+        await dailyLimitTracker.sample('focus_start_after');
         
         await dnrSynchronizer.requestSync();
         
@@ -1050,9 +1088,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'stop_focus_session') {
     (async () => {
       try {
+        await dailyLimitTracker.sample('focus_stop_before');
         await chrome.storage.local.set({
           focusSession: { focusActive: false, focusEndTime: 0, isHardcore: false, focusMode: 'blacklist' }
         });
+        await dailyLimitTracker.sample('focus_stop_after');
         await chrome.alarms.clear('end_focus_session');
         await dnrSynchronizer.requestSync();
         logger.log('Focus Session: Stopped by user.');
@@ -1132,9 +1172,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   
   if (alarm.name === 'end_focus_session') {
     logger.log('Focus Session: Alarm triggered, ending session.');
+    await dailyLimitTracker.sample('focus_complete_before');
     await chrome.storage.local.set({
       focusSession: { focusActive: false, focusEndTime: 0, isHardcore: false, focusMode: 'blacklist' }
     });
+    await dailyLimitTracker.sample('focus_complete_after');
     await dnrSynchronizer.requestSync();
     await StatisticsManager.recordFocusSession();
     await Promise.all([
@@ -1160,6 +1202,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
   
   if (alarm.name === 'update_scheduled_rules') {
+    await dailyLimitTracker.sample('minute_alarm');
     await Promise.all([
       dnrSynchronizer.requestSync(),
       checkAndRequestPermissions({ reason: 'scheduled_alarm' })

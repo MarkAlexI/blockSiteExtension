@@ -7,6 +7,7 @@ import { RulesUI } from '../rules/rulesUI.js';
 import { CategoryManager } from '../rules/categoryManager.js';
 import { CategoryUIManager } from './categoryUIManager.js';
 import { RuleListsManager, GENERAL_RULE_LIST_ID } from '../rules/ruleListsManager.js';
+import { DailyLimitManager } from '../rules/dailyLimitManager.js';
 import { RuleListsUI } from './ruleListsUI.js';
 import { PasswordUtils } from '../pro/password.js';
 import { initializeNoSpaceInputs } from '../utils/noSpaces.js';
@@ -29,6 +30,7 @@ class OptionsPage {
     this.settingsManager = new SettingsManager();
     this.rulesManager = new RulesManager();
     this.ruleListsManager = new RuleListsManager();
+    this.dailyLimitManager = new DailyLimitManager();
     this.rulesClient = new RulesClient();
     this.rulesUI = new RulesUI();
     
@@ -246,7 +248,10 @@ class OptionsPage {
         rules = await this.rulesManager.getRules();
       }
       
-      const ruleLists = await this.ruleListsManager.getLists();
+      const [ruleLists, dailyUsageSeconds] = await Promise.all([
+        this.ruleListsManager.getLists(),
+        this.dailyLimitManager.getUsageSeconds()
+      ]);
       this.ruleLists = ruleLists;
 
       let filteredRules = rules;
@@ -276,7 +281,7 @@ class OptionsPage {
       const settings = await SettingsManager.getSettings();
       const disabledCategories = settings.disabledCategories || [];
       const disabledRuleListIds = ruleLists.filter(list => list.disabled).map(list => list.id);
-      this.renderRules(filteredRules, canEdit, isFiltered, disabledCategories, ruleLists, disabledRuleListIds);
+      this.renderRules(filteredRules, canEdit, isFiltered, disabledCategories, ruleLists, disabledRuleListIds, dailyUsageSeconds);
       this.rulesUI.updateStatus(this.statusElement, filteredRules.length);
       
       if (this.settingsManager) {
@@ -289,7 +294,7 @@ class OptionsPage {
     }
   }
   
-  renderRules(rules, canEdit, isFiltered = false, disabledCategories = [], ruleLists = [], disabledRuleListIds = []) {
+  renderRules(rules, canEdit, isFiltered = false, disabledCategories = [], ruleLists = [], disabledRuleListIds = [], dailyUsageSeconds = {}) {
     this.rulesBody.innerHTML = '';
     const noRulesMessage = isFiltered ? t('norulesforcategory') : t('norules');
     
@@ -302,7 +307,7 @@ class OptionsPage {
     const displayedRules = [...rules].reverse();
 
     displayedRules.forEach((rule, displayIndex) => {
-      const row = this.createRuleRow(rule, displayIndex, canEdit, disabledCategories, ruleLists, disabledRuleListIds);
+      const row = this.createRuleRow(rule, displayIndex, canEdit, disabledCategories, ruleLists, disabledRuleListIds, dailyUsageSeconds);
 
       if (isVisibleRuleGroupEnd(displayIndex, displayedRules.length)) {
         row.classList.add('rule-group-end');
@@ -312,7 +317,7 @@ class OptionsPage {
     });
   }
   
-  createRuleRow(rule, index, canEdit, disabledCategories = [], ruleLists = [], disabledRuleListIds = []) {
+  createRuleRow(rule, index, canEdit, disabledCategories = [], ruleLists = [], disabledRuleListIds = [], dailyUsageSeconds = {}) {
     const isCategoryMuted = disabledCategories.includes(rule.category);
     const isListMuted = !rule.isWhitelist && disabledRuleListIds.includes(rule.listId || GENERAL_RULE_LIST_ID);
     const isMuted = isCategoryMuted || isListMuted;
@@ -333,7 +338,8 @@ class OptionsPage {
         canEdit,
         disabledCategories,
         ruleLists,
-        disabledRuleListIds
+        disabledRuleListIds,
+        dailyUsageSeconds
     );
     if (isMuted) {
       row.title = isCategoryMuted ? t('category_muted_no_edit') : t('rulelists_muted_no_edit');
@@ -391,7 +397,16 @@ class OptionsPage {
     const editRow = this.rulesUI.createRuleEditRow(
       rule,
       ruleId,
-      (ruleId, blockValue, redirectValue, category, schedule, listId) => this.saveEditedRule(ruleId, blockValue, redirectValue, category, schedule, listId, rule.disabledByUser, isWhitelist),
+      (ruleId, blockValue, redirectValue, category, blockingConfig, listId) => this.saveEditedRule(
+        ruleId,
+        blockValue,
+        redirectValue,
+        category,
+        blockingConfig,
+        listId,
+        rule.disabledByUser,
+        isWhitelist
+      ),
       () => this.loadRules(),
       this.isPro || this.isLegacyUser,
       rule.disabledByUser,
@@ -410,13 +425,15 @@ class OptionsPage {
     row.replaceWith(editRow);
   }
   
-  async saveEditedRule(ruleId, newBlock, newRedirect, newCategory, newSchedule, listId, disabledByUser, isWhitelist = false) {
+  async saveEditedRule(ruleId, newBlock, newRedirect, newCategory, blockingConfig, listId, disabledByUser, isWhitelist = false) {
     try {
       await this.rulesClient.updateRule({
         ruleId,
         blockURL: newBlock,
         redirectURL: isWhitelist ? '' : newRedirect,
-        schedule: newSchedule,
+        schedule: isWhitelist ? null : blockingConfig.schedule,
+        blockingMode: isWhitelist ? 'always' : blockingConfig.blockingMode,
+        dailyLimit: isWhitelist ? null : blockingConfig.dailyLimit,
         category: isWhitelist ? 'whitelist' : newCategory,
         listId: isWhitelist ? GENERAL_RULE_LIST_ID : (listId || GENERAL_RULE_LIST_ID),
         disabledByUser
@@ -440,7 +457,15 @@ class OptionsPage {
       }
       
       const newRow = this.rulesUI.createAddRuleRow(
-        (blockValue, redirectValue, category, schedule, listId, row) => this.saveNewRule(blockValue, redirectValue, category, schedule, listId, row, isWhitelist),
+        (blockValue, redirectValue, category, blockingConfig, listId, row) => this.saveNewRule(
+          blockValue,
+          redirectValue,
+          category,
+          blockingConfig,
+          listId,
+          row,
+          isWhitelist
+        ),
         (row) => row.remove(),
         this.isPro || this.isLegacyUser,
         isWhitelist,
@@ -454,12 +479,14 @@ class OptionsPage {
     }
   }
   
-  async saveNewRule(newBlock, newRedirect, newCategory, newSchedule, listId, row, isWhitelist = false) {
+  async saveNewRule(newBlock, newRedirect, newCategory, blockingConfig, listId, row, isWhitelist = false) {
     try {
       await this.rulesClient.addRule({
         blockURL: newBlock,
         redirectURL: isWhitelist ? '' : newRedirect,
-        schedule: newSchedule,
+        schedule: isWhitelist ? null : blockingConfig.schedule,
+        blockingMode: isWhitelist ? 'always' : blockingConfig.blockingMode,
+        dailyLimit: isWhitelist ? null : blockingConfig.dailyLimit,
         category: isWhitelist ? 'whitelist' : newCategory,
         listId: isWhitelist ? GENERAL_RULE_LIST_ID : (listId || GENERAL_RULE_LIST_ID),
         isWhitelist
