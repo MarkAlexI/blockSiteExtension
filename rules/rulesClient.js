@@ -64,8 +64,8 @@ export class RulesClient {
     return sendRulesIntent('rules:toggle', { ruleId });
   }
 
-  replaceAll(rules, settings = null, ruleLists = null) {
-    return sendRulesIntent('rules:replaceAll', { rules, settings, ruleLists });
+  replaceAll(rules, settings = null, ruleLists = null, activeRuleListId = null) {
+    return sendRulesIntent('rules:replaceAll', { rules, settings, ruleLists, activeRuleListId });
   }
 
   clearRules() {
@@ -84,8 +84,12 @@ export class RulesClient {
     return sendRulesIntent('rules:renameList', { listId, name });
   }
 
+  activateRuleList(listId) {
+    return sendRulesIntent('rules:activateList', { listId });
+  }
+
   toggleRuleList(listId) {
-    return sendRulesIntent('rules:toggleList', { listId });
+    return this.activateRuleList(listId);
   }
 
   deleteRuleList(listId) {
