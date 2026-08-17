@@ -144,3 +144,29 @@ test('rules client includes Rule Lists in replaceAll imports', async () => {
     globalThis.chrome = previousChrome;
   }
 });
+
+test('rules client scopes toggle intent to the selected Rule List assignment', async () => {
+  const previousChrome = globalThis.chrome;
+  let sentMessage = null;
+
+  globalThis.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, callback) {
+        sentMessage = message;
+        callback({ success: true, rules: [] });
+      }
+    }
+  };
+
+  try {
+    const client = new RulesClient();
+    await client.toggleRule(17, 'study');
+    assert.deepEqual(sentMessage, {
+      type: 'rules:toggle',
+      payload: { ruleId: 17, listId: 'study' }
+    });
+  } finally {
+    globalThis.chrome = previousChrome;
+  }
+});
