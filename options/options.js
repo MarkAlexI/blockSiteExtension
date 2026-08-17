@@ -108,6 +108,7 @@ class OptionsPage {
 
     this.isPro = false;
     this.isLegacyUser = false;
+    this.storageChangeHandler = null;
     
     this.init();
     this.exposeDebugTools();
@@ -120,6 +121,7 @@ class OptionsPage {
   async init() {
     this.initializeUI();
     this.setupEventListeners();
+    this.setupStorageListeners();
     this.rulePacksUI.initialize();
     this.diagnosticsUI.initialize();
     await this.telemetryUI.initialize();
@@ -191,6 +193,17 @@ class OptionsPage {
     });
   }
   
+  setupStorageListeners() {
+    this.storageChangeHandler = (changes, areaName) => {
+      if (areaName !== 'local' || !changes?.dailyRuleUsage) return;
+      const previousUsage = changes.dailyRuleUsage.oldValue?.usageSeconds || {};
+      const nextUsage = changes.dailyRuleUsage.newValue?.usageSeconds || {};
+      if (JSON.stringify(previousUsage) === JSON.stringify(nextUsage)) return;
+      void this.refreshProfileView();
+    };
+    chrome.storage.onChanged.addListener(this.storageChangeHandler);
+  }
+
   updateWhitelistButtonState() {
     if (!this.addWhitelistRuleButton) return;
     const hasAccess = this.isPro || this.isLegacyUser;
@@ -660,6 +673,10 @@ class OptionsPage {
   
   cleanup() {
     this.rulesUI.cleanup();
+    if (this.storageChangeHandler) {
+      chrome.storage.onChanged.removeListener(this.storageChangeHandler);
+      this.storageChangeHandler = null;
+    }
   }
 }
 

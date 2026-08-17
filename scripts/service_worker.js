@@ -221,6 +221,7 @@ const rulesMutationService = createRulesMutationService({
   rulesManager,
   ruleListsManager,
   dnrSynchronizer,
+  dailyLimitManager,
   declarativeNetRequest: chrome.declarativeNetRequest,
   getAccess: async () => ({
     isPro: await ProManager.isPro(),
