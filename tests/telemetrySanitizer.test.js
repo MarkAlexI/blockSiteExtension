@@ -35,3 +35,20 @@ test('telemetry error sanitizer keeps identifiers only and rejects unknown sourc
     code: 'sync_failed'
   }), null);
 });
+
+
+test('RC build versions survive telemetry context sanitization', async () => {
+  const { sanitizeTelemetryContext } = await import('../telemetry/telemetrySanitizer.js');
+  const sanitized = sanitizeTelemetryContext({
+    extensionVersion: '5.0.0-rc12',
+    browser: 'chrome',
+    browserMajor: 137,
+    platform: 'mobile',
+    os: 'android',
+    locale: 'en-us',
+    access: 'pro',
+    installationAge: 'lt_7d'
+  });
+
+  assert.equal(sanitized.extensionVersion, '5.0.0-rc12');
+});
