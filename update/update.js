@@ -1,4 +1,5 @@
 import { getStoreConfig } from '../utils/storeTarget.js';
+import { openPrivacySettings } from './privacySettings.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(location.search);
@@ -23,7 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('store_link')?.setAttribute('href', store.reviewUrl);
   
   document.getElementById('privacy-settings-btn')?.addEventListener('click', () => {
-    chrome.runtime.openOptionsPage?.();
+    openPrivacySettings({
+      runtime: chrome.runtime,
+      tabs: chrome.tabs,
+      storeTarget: store.target
+    });
   });
 
   document.getElementById('close-btn')
