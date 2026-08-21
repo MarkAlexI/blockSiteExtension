@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RulesClient } from '../rules/rulesClient.js';
+import { createRulesIntentHandler } from '../rules/rulesIntentRouter.js';
 
 test('rules client preserves error code and all validation keys from the worker', async () => {
   const previousChrome = globalThis.chrome;
@@ -166,6 +167,54 @@ test('rules client scopes toggle intent to the selected Rule List assignment', a
       type: 'rules:toggle',
       payload: { ruleId: 17, listId: 'study' }
     });
+  } finally {
+    globalThis.chrome = previousChrome;
+  }
+});
+
+test('deletion intents cross the client and worker router with stable IDs', async () => {
+  const previousChrome = globalThis.chrome;
+  const calls = [];
+  const handler = createRulesIntentHandler({
+    async removeAssignment(payload) {
+      calls.push(['removeAssignment', payload]);
+      return {
+        rules: [],
+        removedAssignmentListId: payload.listId,
+        targetDeleted: true
+      };
+    },
+    async deleteRule(payload) {
+      calls.push(['deleteRule', payload]);
+      return { rules: [] };
+    }
+  });
+
+  globalThis.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, callback) {
+        Promise.resolve(handler(message)).then(
+          result => callback({ success: true, ...result }),
+          error => callback({
+            success: false,
+            error: { code: error?.code || 'intent_failed', message: error?.message }
+          })
+        );
+      }
+    }
+  };
+
+  try {
+    const client = new RulesClient();
+    const assignmentResult = await client.removeAssignment(23, 'general');
+    await client.deleteRule(41);
+
+    assert.equal(assignmentResult.targetDeleted, true);
+    assert.deepEqual(calls, [
+      ['removeAssignment', { ruleId: 23, listId: 'general' }],
+      ['deleteRule', { ruleId: 41 }]
+    ]);
   } finally {
     globalThis.chrome = previousChrome;
   }

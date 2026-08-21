@@ -268,6 +268,40 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     assert.equal(enabledConsent.success, true);
     assert.equal(enabledConsent.consent.enabled, true);
 
+    const removedGeneralRule = await sendWorkerMessage(messageListener, {
+      type: 'rules:removeAssignment',
+      payload: { ruleId: 1, listId: 'general' }
+    });
+    assert.equal(removedGeneralRule.success, true);
+    assert.equal(removedGeneralRule.targetDeleted, true);
+    assert.deepEqual(localStorage.data.rules, []);
+
+    localStorage.data.rules = [{
+      id: 2,
+      blockURL: 'former-pro.example',
+      redirectURL: '',
+      category: 'social',
+      isWhitelist: false,
+      assignments: [
+        { listId: 'general', disabledByUser: false, blockingMode: 'always', schedule: null, dailyLimit: null },
+        { listId: 'list-1', disabledByUser: false, blockingMode: 'always', schedule: null, dailyLimit: null }
+      ]
+    }];
+    const removedFormerProAssignment = await sendWorkerMessage(messageListener, {
+      type: 'rules:removeAssignment',
+      payload: { ruleId: 2, listId: 'list-1' }
+    });
+    assert.equal(removedFormerProAssignment.success, true);
+    assert.equal(removedFormerProAssignment.targetDeleted, false);
+    assert.deepEqual(
+      localStorage.data.rules[0].assignments.map(assignment => assignment.listId),
+      ['general']
+    );
+    assert.equal(
+      Object.values(localStorage.data.telemetryBuckets || {})[0]?.counters?.rule_deleted,
+      2
+    );
+
     const consoleErrorsBeforeExpectedRejection = consoleErrorCount;
     const rejectedRule = await sendWorkerMessage(messageListener, {
       type: 'rules:add',
@@ -327,7 +361,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
       type: 'diagnostics:getReport'
     });
     assert.equal(telemetryDiagnostics.report.telemetry.enabled, true);
-    assert.equal(telemetryDiagnostics.report.telemetry.pendingCounterTotal, 1);
+    assert.equal(telemetryDiagnostics.report.telemetry.pendingCounterTotal, 3);
     assert.equal(telemetryDiagnostics.report.telemetry.pendingErrorFingerprints, 1);
 
     const flushed = await sendWorkerMessage(messageListener, {
@@ -341,6 +375,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     const telemetryPayload = JSON.parse(telemetryRequests[0].options.body);
     assert.equal(telemetryPayload.schemaVersion, 2);
     assert.match(telemetryPayload.batches[0].deliveryId, /^[0-9a-f-]{36}$/);
+    assert.equal(telemetryPayload.batches[0].counters.rule_deleted, 2);
     assert.equal(telemetryPayload.batches[0].counters.feedback_prompt_shown, 1);
     assert.equal(telemetryPayload.batches[0].counters.feedback_private_value, undefined);
     assert.equal('installationId' in telemetryPayload.context, false);
