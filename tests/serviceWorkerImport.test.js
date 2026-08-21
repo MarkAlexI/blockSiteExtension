@@ -79,6 +79,8 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
   const createdTabs = [];
   const removedTabs = [];
   const notifications = [];
+  const runtimeMessages = [];
+  const dnrUpdates = [];
 
   const localStorage = createStorageArea({
     rules: [{
@@ -143,7 +145,8 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
       getURL: path => `chrome-extension://test-extension-id/${path}`,
       getManifest: () => ({ version: '4.9.0', manifest_version: 3 }),
       setUninstallURL() {},
-      sendMessage(_message, callback) {
+      sendMessage(message, callback) {
+        runtimeMessages.push(structuredClone(message));
         if (typeof callback === 'function') callback();
         return Promise.resolve({ success: true });
       },
@@ -153,7 +156,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     },
     declarativeNetRequest: {
       getDynamicRules: async () => [],
-      updateDynamicRules: async () => {}
+      updateDynamicRules: async update => { dnrUpdates.push(structuredClone(update)); }
     },
     alarms: {
       get(_name, callback) {
@@ -554,12 +557,53 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     messageListener({ type: 'close_current_tab' }, { tab: { id: 95 } }, () => {});
     assert.equal(removedTabs.includes(95), true);
 
+    localStorage.data.ruleLists = [
+      { id: 'general', name: 'General', disabledCategories: [] },
+      { id: 'list-1', name: 'Study', disabledCategories: [] }
+    ];
+    localStorage.data.activeRuleListId = 'list-1';
+    localStorage.data.rules.push(
+      {
+        id: 32,
+        blockURL: 'restored-general.example',
+        redirectURL: '',
+        category: 'social',
+        isWhitelist: false,
+        assignments: [{ listId: 'general', blockingMode: 'always' }]
+      },
+      {
+        id: 33,
+        blockURL: 'preserved-study.example',
+        redirectURL: '',
+        category: 'social',
+        isWhitelist: false,
+        assignments: [{ listId: 'list-1', blockingMode: 'always' }]
+      }
+    );
+    const proRefresh = await sendWorkerMessage(messageListener, {
+      type: 'update_pro_status',
+      isPro: true
+    });
+    assert.equal(proRefresh.success, true);
+    assert.equal(localStorage.data.activeRuleListId, 'list-1');
+    const updatesBeforeDowngrade = dnrUpdates.length;
+
     const downgraded = await sendWorkerMessage(messageListener, {
       type: 'update_pro_status',
       isPro: false
     });
     assert.equal(downgraded.success, true);
     assert.equal(syncStorage.data.credentials.licenseKey, null);
+    assert.equal(localStorage.data.activeRuleListId, 'general');
+    assert.deepEqual(localStorage.data.ruleLists.map(list => list.id), ['general', 'list-1']);
+    assert.deepEqual(localStorage.data.rules.map(rule => rule.id), [31, 32, 33]);
+    const recoveryUpdates = dnrUpdates.slice(updatesBeforeDowngrade);
+    assert.equal(recoveryUpdates.some(update => update.addRules.some(rule => rule.id === 32)), true);
+    assert.equal(recoveryUpdates.some(update => update.addRules.some(rule => rule.id === 33)), false);
+    assert.equal(
+      runtimeMessages.some(message => message.type === 'rules:changed' && message.activeRuleListId === 'general'),
+      true
+    );
     const missingLicense = await sendWorkerMessage(messageListener, { type: 'force_sync' });
     assert.equal(missingLicense.success, false);
     assert.equal(missingLicense.reason, 'no_key');
@@ -576,9 +620,24 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     hostAccessGranted = true;
     await permissionsOnAdded.listeners[0]({ origins: ['*://*/*'] });
 
+    const regularInstallationDate = syncStorage.data.credentials.installationDate;
+    syncStorage.data.credentials.installationDate = '2025-12-01T00:00:00.000Z';
+    syncStorage.data.credentials.isLegacyUser = true;
+    localStorage.data.activeRuleListId = 'list-1';
+    const legacyDowngrade = await sendWorkerMessage(messageListener, {
+      type: 'update_pro_status',
+      isPro: false
+    });
+    assert.equal(legacyDowngrade.success, true);
+    assert.equal(localStorage.data.activeRuleListId, 'list-1');
+    syncStorage.data.credentials.installationDate = regularInstallationDate;
+    syncStorage.data.credentials.isLegacyUser = false;
+
     const updateTabCount = createdTabs.length;
     await runtimeOnInstalled.listeners[0]({ reason: 'update' });
     assert.equal(createdTabs.slice(updateTabCount).some(tab => tab.url.includes('update/update.html')), true);
+    assert.equal(localStorage.data.activeRuleListId, 'general');
+    assert.deepEqual(localStorage.data.ruleLists.map(list => list.id), ['general', 'list-1']);
 
     const installTabCount = createdTabs.length;
     await runtimeOnInstalled.listeners[0]({ reason: 'install' });
