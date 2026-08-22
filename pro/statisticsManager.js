@@ -16,7 +16,7 @@ export class StatisticsManager {
     return result;
   }
 
-  static async readStatistics() {
+  static async readStatistics({ throwOnError = false } = {}) {
     try {
       const result = await chrome.storage.local.get(['statistics']);
       if (!result.statistics) {
@@ -32,6 +32,7 @@ export class StatisticsManager {
       return normalized;
     } catch (error) {
       this.logger.error('Error getting statistics:', error);
+      if (throwOnError) throw error;
       return createDefaultStatistics();
     }
   }
@@ -44,7 +45,10 @@ export class StatisticsManager {
     return this.enqueueMutation(async () => {
       try {
         const now = new Date();
-        let stats = normalizeStatistics(await this.readStatistics(), now);
+        let stats = normalizeStatistics(
+          await this.readStatistics({ throwOnError: true }),
+          now
+        );
         stats = updateFn(stats, now);
         await chrome.storage.local.set({ statistics: stats });
       } catch (error) {
@@ -85,7 +89,7 @@ export class StatisticsManager {
   static async reset() {
     return this.enqueueMutation(async () => {
       try {
-        const stats = await this.readStatistics();
+        const stats = await this.readStatistics({ throwOnError: true });
         const newStats = createDefaultStatistics();
         newStats.creationDate = stats.creationDate;
         await chrome.storage.local.set({ statistics: newStats });
