@@ -1717,7 +1717,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       await dailyLimitTracker.sample('minute_alarm');
     }
     await Promise.all([
-      dnrSynchronizer.requestSync(),
+      dnrSynchronizer.requestSync({ reconcileExistingTabs: false }),
       checkAndRequestPermissions({ reason: 'scheduled_alarm' })
     ]);
   }
