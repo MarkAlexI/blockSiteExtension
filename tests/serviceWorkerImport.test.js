@@ -544,7 +544,10 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     });
     assert.equal(removedTabs.includes(82), true);
 
-    await alarmsOnAlarm.listeners[0]({ name: 'end_focus_session' });
+    await alarmsOnAlarm.listeners[0]({
+      name: 'end_focus_session',
+      scheduledTime: localStorage.data.focusSession.focusEndTime
+    });
     assert.equal(localStorage.data.focusSession.focusActive, false);
     assert.equal(localStorage.data.statistics.successfulFocusSessions, 1);
     assert.equal(notifications.at(-1).id, 'focus_session_ended');
