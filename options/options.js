@@ -127,8 +127,9 @@ class OptionsPage {
     this.diagnosticsUI.initialize();
     await this.telemetryUI.initialize();
     try {
-      this.isPro = await ProManager.isPro();
-      this.isLegacyUser = await ProManager.isLegacyUser();
+      const access = await ProManager.getAccess();
+      this.isPro = access.isPro;
+      this.isLegacyUser = access.isLegacyUser;
     } catch (error) {
       this.logger.error('Error initializing Pro/Legacy status:', error);
     }
@@ -738,7 +739,7 @@ chrome.runtime.onMessage.addListener((message) => {
   
   if (message.type === 'pro_status_changed') {
     logger.log(`Pro status changed: ${message.isPro}`);
-    ProManager.updateProFeaturesVisibility(message.isPro);
+    ProManager.updateProFeaturesVisibility(message.isPro || optionsPage.isLegacyUser);
     optionsPage.isPro = message.isPro;
     optionsPage.updateWhitelistButtonState();
     optionsPage.refreshProfileView();
