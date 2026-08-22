@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { isBlockedURL } from '../scripts/isBlockedURL.js';
+import { createExtensionApi, withExtensionEnvironment } from './helpers/extensionTestHarness.js';
 import {
   STORE_TARGET,
   EDGE_EXTENSION_ID,
@@ -56,4 +58,23 @@ test('Microsoft and Bing restrictions are Edge-only', () => {
   assert.equal(chromePatterns.length, 0);
   assert.equal(edgePatterns.some(pattern => pattern.test('https://www.bing.com/search?q=test')), true);
   assert.equal(edgePatterns.some(pattern => pattern.test('https://microsoft.com/')), true);
+});
+
+test('Edge protects real Microsoft hosts without trusting mentions on unrelated sites', async () => {
+  const api = createExtensionApi();
+  api.runtime.id = EDGE_EXTENSION_ID;
+
+  await withExtensionEnvironment(api, () => {
+    assert.equal(isBlockedURL([{ url: 'https://www.bing.com/search?q=test' }]), true);
+    assert.equal(isBlockedURL([{ url: 'https://account.microsoft.com/' }]), true);
+    assert.equal(isBlockedURL([{
+      url: 'https://microsoftedge.microsoft.com/addons/detail/example'
+    }]), true);
+    assert.equal(isBlockedURL([{
+      url: 'https://evil.example/?next=microsoft.com'
+    }]), false);
+    assert.equal(isBlockedURL([{
+      url: 'https://evil.example/search/bing.com'
+    }]), false);
+  });
 });

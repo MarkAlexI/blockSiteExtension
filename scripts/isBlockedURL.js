@@ -16,21 +16,44 @@ import { getStoreProtectedPatterns } from '../utils/storeTarget.js';
 export function isBlockedURL(tabs) {
   if (!tabs) return true;
   const url = tabs[0]?.url || '';
-  
+
   const blockedPatterns = [
     /^chrome:\/\//,
     /extension:\/\//,
-    /^https:\/\/chrome\.google\.com\/webstore/,
-    /^https:\/\/chromewebstore\.google\.com/,
+    /^https:\/\/chrome\.google\.com\/webstore(?:\/|$)/,
+    /^https:\/\/chromewebstore\.google\.com(?:\/|$)/,
     /^kiwi:\/\//,
     /^devtools:/,
     /^view-source:/,
-    /blockdistraction/,
-    /markdigital/,
-    /ext\.pp\.ua/,
     /\/\/newtab/
   ];
-
   const storePatterns = getStoreProtectedPatterns();
-  return [...blockedPatterns, ...storePatterns].some(pattern => pattern.test(url));
+  const protectedProjectPatterns = [/blockdistraction/i, /markdigital/i, /ext\.pp\.ua/i];
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return [...blockedPatterns, ...protectedProjectPatterns, ...storePatterns]
+      .some(pattern => pattern.test(url));
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return [...blockedPatterns, ...protectedProjectPatterns, ...storePatterns]
+      .some(pattern => pattern.test(url));
+  }
+
+  const safeUrl = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+  const hostname = parsed.hostname.toLowerCase();
+  const isProtectedProjectHost = [
+    /(?:^|\.)blockdistraction\.com$/i,
+    /(?:^|\.)markdigital(?:\.[a-z\d-]+)*$/i,
+    /(?:^|\.)ext\.pp\.ua$/i
+  ].some(pattern => pattern.test(hostname));
+
+  return blockedPatterns.some(pattern => pattern.test(safeUrl)) ||
+    isProtectedProjectHost ||
+    storePatterns.some(pattern => pattern.test(
+      pattern.source.startsWith('^') ? safeUrl : hostname
+    ));
 }
