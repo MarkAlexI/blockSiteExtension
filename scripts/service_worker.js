@@ -44,11 +44,7 @@ const ruleListsManager = new RuleListsManager(chrome.storage.local);
 const dailyLimitManager = new DailyLimitManager(chrome.storage.local);
 
 async function getFocusAccess() {
-  const [isPro, isLegacyUser] = await Promise.all([
-    ProManager.isPro(),
-    ProManager.isLegacyUser()
-  ]);
-  return { isPro, isLegacyUser };
+  return ProManager.getAccess();
 }
 
 
@@ -63,14 +59,13 @@ function getDailyLimitAssignmentKeys(rules = []) {
 const diagnosticStore = createDiagnosticStore({
   localStorage: chrome.storage.local,
   getSettings: async () => {
-    const [settings, isPro, isLegacyUser] = await Promise.all([
+    const [settings, access] = await Promise.all([
       SettingsManager.getSettings(),
-      ProManager.isPro(),
-      ProManager.isLegacyUser()
+      ProManager.getAccess()
     ]);
     return {
       ...settings,
-      debugMode: settings.debugMode === true && (isPro || isLegacyUser)
+      debugMode: settings.debugMode === true && (access.isPro || access.isLegacyUser)
     };
   }
 });
@@ -86,11 +81,7 @@ const hostPermissionMonitor = createHostPermissionMonitor({
 const TELEMETRY_RETRY_ALARM = 'telemetry_retry';
 
 async function getCurrentTelemetryContext() {
-  const [credentials, isPro, isLegacyUser] = await Promise.all([
-    ProManager.getCredentials(),
-    ProManager.isPro(),
-    ProManager.isLegacyUser()
-  ]);
+  const { credentials, isPro, isLegacyUser } = await ProManager.getAccess();
   return buildTelemetryContext({
     manifest: chrome.runtime.getManifest(),
     navigatorRef: globalThis.navigator || {},
@@ -236,10 +227,7 @@ const rulesMutationService = createRulesMutationService({
   dnrSynchronizer,
   dailyLimitManager,
   declarativeNetRequest: chrome.declarativeNetRequest,
-  getAccess: async () => ({
-    isPro: await ProManager.isPro(),
-    isLegacyUser: await ProManager.isLegacyUser()
-  }),
+  getAccess: () => ProManager.getAccess(),
   getSettings: () => SettingsManager.getSettings(),
   saveSettings: (settings) => chrome.storage.sync.set({ settings }),
   saveRulesAndLists: (rules, ruleLists, activeRuleListId) => chrome.storage.local.set({ rules, ruleLists, ...(activeRuleListId ? { activeRuleListId } : {}) }),
@@ -259,51 +247,72 @@ async function enforceFocusWhitelist(tabId, tabUrl) {
   if (isBlockedURL([{ url: tabUrl }])) {
     return;
   }
+
+  const transitionGeneration = focusSessionTransitionGeneration;
+  const shouldContinue = () => transitionGeneration === focusSessionTransitionGeneration;
   
   const { focusActive, focusMode } = await getFocusSessionState();
-  if (!focusActive || focusMode !== 'whitelist') {
+  if (!shouldContinue() || !focusActive || focusMode !== 'whitelist') {
     return;
   }
   
   const rules = await rulesManager.getRules();
+  if (!shouldContinue()) return;
   const whitelistRules = rules.filter(r =>
     r.isWhitelist && getRuleAssignment(r, GENERAL_RULE_LIST_ID)?.disabledByUser !== true
   );
   
   if (!isUrlInWhitelist(tabUrl, whitelistRules)) {
+    const currentSession = await getFocusSessionState();
+    if (
+      !shouldContinue() ||
+      currentSession.focusActive !== true ||
+      currentSession.focusMode !== 'whitelist'
+    ) return;
+
+    const currentRules = await rulesManager.getRules();
+    if (!shouldContinue()) return;
+    const currentWhitelistRules = currentRules.filter(r =>
+      r.isWhitelist && getRuleAssignment(r, GENERAL_RULE_LIST_ID)?.disabledByUser !== true
+    );
+    if (isUrlInWhitelist(tabUrl, currentWhitelistRules)) return;
+
     logger.log(`Focus Whitelist: Closing non-whitelisted tab ${tabId} (${tabUrl})`);
-    chrome.tabs.remove(tabId).catch(() => {});
+    await chrome.tabs.remove(tabId).catch(() => {});
   }
 }
 
 /**
  * Scans all currently open tabs and closes any tab that does not match active Whitelist rules.
  */
-async function checkAllTabsAgainstWhitelist() {
+async function checkAllTabsAgainstWhitelist(shouldContinue = () => true) {
+  if (!shouldContinue()) return;
   const rules = await rulesManager.getRules();
+  if (!shouldContinue()) return;
   const whitelistRules = rules.filter(r =>
     r.isWhitelist && getRuleAssignment(r, GENERAL_RULE_LIST_ID)?.disabledByUser !== true
   );
   
-  await closeNonWhitelistedTabs(whitelistRules);
+  await closeNonWhitelistedTabs(whitelistRules, shouldContinue);
 }
 
-let proStatusTransitionTail = Promise.resolve();
+let stateTransitionTail = Promise.resolve();
 let proStatusTransitionGeneration = 0;
 let licenseVerificationGeneration = 0;
-let focusSessionTransitionTail = Promise.resolve();
 let focusSessionTransitionGeneration = 0;
 
-function enqueueProStatusTransition(task) {
-  const result = proStatusTransitionTail.then(task, task);
-  proStatusTransitionTail = result.catch(() => {});
+function enqueueStateTransition(task) {
+  const result = stateTransitionTail.then(task, task);
+  stateTransitionTail = result.catch(() => {});
   return result;
+}
+
+function enqueueProStatusTransition(task) {
+  return enqueueStateTransition(task);
 }
 
 function enqueueFocusSessionTransition(task) {
-  const result = focusSessionTransitionTail.then(task, task);
-  focusSessionTransitionTail = result.catch(() => {});
-  return result;
+  return enqueueStateTransition(task);
 }
 
 function normalizeFocusSessionRequest(message) {
@@ -578,8 +587,9 @@ async function trackBlockedPage(url) {
   }
 }
 
-async function restoreFreeRuleListAccess(isPro, shouldContinue = () => true) {
-  if (isPro || !shouldContinue() || await ProManager.isLegacyUser()) return false;
+async function restoreFreeRuleListAccess(shouldContinue = () => true) {
+  const access = await ProManager.getAccess();
+  if (!shouldContinue() || access.isPro || access.isLegacyUser) return false;
 
   return rulesMutationService.runExclusive(async () => {
     if (!shouldContinue()) return false;
@@ -587,7 +597,8 @@ async function restoreFreeRuleListAccess(isPro, shouldContinue = () => true) {
     if (!shouldContinue() || state.activeRuleListId === GENERAL_RULE_LIST_ID) return false;
 
     await dailyLimitTracker.pause('pro_access_lost');
-    if (!shouldContinue() || await ProManager.isPro() || !shouldContinue()) return false;
+    const currentAccess = await ProManager.getAccess();
+    if (!shouldContinue() || currentAccess.isPro) return false;
     await ruleListsManager.setActiveListId(GENERAL_RULE_LIST_ID);
 
     const rules = await rulesManager.getRules();
@@ -604,40 +615,32 @@ async function restoreFreeRuleListAccess(isPro, shouldContinue = () => true) {
 }
 
 async function restoreFreeFocusAccess(
-  isPro,
   shouldContinue = () => true,
-  { ruleListRestored = false } = {}
+  { ruleListRestored = false, alreadySerialized = false } = {}
 ) {
-  if (isPro || !shouldContinue() || await ProManager.isLegacyUser()) return false;
+  const restore = async () => {
+    const access = await ProManager.getAccess();
+    if (!shouldContinue() || access.isPro || access.isLegacyUser) return false;
 
-  const focusSession = await getFocusSessionState();
-  if (!focusSession.focusActive || !shouldContinue()) return false;
+    const focusSession = await getFocusSessionState();
+    if (!focusSession.focusActive || !shouldContinue()) return false;
 
-  if (focusSession.focusMode === 'blacklist' && focusSession.isHardcore !== true) {
-    if (!ruleListRestored && shouldContinue()) await dnrSynchronizer.requestSync();
-    return false;
-  }
-
-  const transitionGeneration = ++focusSessionTransitionGeneration;
-  return enqueueFocusSessionTransition(async () => {
-    if (!shouldContinue() || transitionGeneration !== focusSessionTransitionGeneration) return false;
-
-    const currentSession = await getFocusSessionState();
-    if (
-      !currentSession.focusActive ||
-      !shouldContinue() ||
-      transitionGeneration !== focusSessionTransitionGeneration
-    ) return false;
+    if (focusSession.focusMode === 'blacklist' && focusSession.isHardcore !== true) {
+      if (!ruleListRestored && shouldContinue()) await dnrSynchronizer.requestSync();
+      return false;
+    }
 
     await chrome.storage.local.set({
-      focusSession: { ...currentSession, isHardcore: false, focusMode: 'blacklist' }
+      focusSession: { ...focusSession, isHardcore: false, focusMode: 'blacklist' }
     });
-    if (!shouldContinue() || transitionGeneration !== focusSessionTransitionGeneration) return false;
+    if (!shouldContinue()) return false;
 
     await dnrSynchronizer.requestSync();
     logger.log('Free access restored to the standard Focus Session');
     return true;
-  });
+  };
+
+  return alreadySerialized ? restore() : enqueueFocusSessionTransition(restore);
 }
 
 function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerification = null) {
@@ -667,10 +670,13 @@ function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerificatio
       const shouldContinue = () => transitionGeneration === proStatusTransitionGeneration;
       if (!shouldContinue()) return updatedCredentials;
 
-      const ruleListRestored = await restoreFreeRuleListAccess(isPro, shouldContinue);
+      const ruleListRestored = await restoreFreeRuleListAccess(shouldContinue);
       if (!shouldContinue()) return updatedCredentials;
 
-      await restoreFreeFocusAccess(isPro, shouldContinue, { ruleListRestored });
+      await restoreFreeFocusAccess(shouldContinue, {
+        ruleListRestored,
+        alreadySerialized: true
+      });
       if (!shouldContinue()) return updatedCredentials;
 
       logger.log('Pro status updated successfully');
@@ -808,8 +814,8 @@ async function initializeExtension(details) {
     }
     
     const isPro = await ProManager.isPro();
-    const ruleListRestored = await restoreFreeRuleListAccess(isPro);
-    await restoreFreeFocusAccess(isPro, () => true, { ruleListRestored });
+    const ruleListRestored = await restoreFreeRuleListAccess();
+    await restoreFreeFocusAccess(() => true, { ruleListRestored });
     await updateContextMenu(isPro);
   } catch (error) {
     logger.info('Error handling install/update for legacy:', error);
@@ -863,10 +869,7 @@ if (chrome.permissions?.onAdded) {
 }
 
 async function getDiagnosticsAccess() {
-  const [isPro, isLegacyUser] = await Promise.all([
-    ProManager.isPro(),
-    ProManager.isLegacyUser()
-  ]);
+  const { isPro, isLegacyUser } = await ProManager.getAccess();
   return {
     isPro,
     isLegacyUser,
@@ -1327,7 +1330,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
           if (focusMode === 'whitelist') {
-            await checkAllTabsAgainstWhitelist();
+            await checkAllTabsAgainstWhitelist(
+              () => transitionGeneration === focusSessionTransitionGeneration
+            );
+            if (transitionGeneration !== focusSessionTransitionGeneration) return false;
           }
 
           logger.log(`Focus Session: Started for ${durationMinutes} minutes (mode: ${focusMode}).`);
