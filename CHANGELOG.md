@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.21] - 2026-08-25
+### Changed
+- Updated Chrome Web Store and Microsoft Edge Add-ons descriptions in all 57 existing locales to highlight privacy-first website blocking, ten free rules, and account-free access.
+- Clarified that Pro adds schedules, Daily Limits, password protection, and Focus controls without changing extension behavior or permissions.
+
+### Added
+- Added store-description regression coverage for exact English and regional English copy, every existing locale, Free and Pro feature disclosure, platform targeting, and the 132-character manifest limit.
+
 ## [5.1.20] - 2026-08-24
 ### Security
 - Direct worker rule-creation and editing intents can no longer introduce or modify paid schedule settings without Pro or genuine legacy access.
