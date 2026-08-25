@@ -125,6 +125,14 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
 
   const telemetryRequests = [];
   globalThis.fetch = async (url, options) => {
+    if (url === 'https://blockdistraction.com/api/verifyKey') {
+      return {
+        ok: true,
+        status: 200,
+        async json() { return { isPro: true, email: 'person@example.com' }; }
+      };
+    }
+
     telemetryRequests.push({ url, options });
     return {
       ok: true,
@@ -475,17 +483,31 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     const freeStatus = await sendWorkerMessage(messageListener, { type: 'check_pro_status' });
     assert.equal(freeStatus.isPro, false);
     const credentials = await sendWorkerMessage(messageListener, { type: 'get_pro_credentials' });
-    assert.equal(credentials.credentials.licenseKey, 'BD-PRIVATE-123456');
+    assert.equal(credentials.success, false);
+    assert.equal(credentials.code, 'credentials_unavailable');
+    assert.equal('credentials' in credentials, false);
 
-    const upgraded = await sendWorkerMessage(messageListener, {
+    const forged = await sendWorkerMessage(messageListener, {
       type: 'update_pro_status',
       isPro: true,
       subscriptionData: {
-        licenseKey: 'BD-PRO-WORKER-123',
-        subscriptionEmail: 'person@example.com'
+        licenseKey: 'BD-FORGED-KEY',
+        isLegacyUser: true,
+        installationDate: '2025-01-01T00:00:00.000Z'
       }
     });
+    assert.equal(forged.success, false);
+    assert.equal(forged.code, 'unauthorized_pro_transition');
+    assert.equal(syncStorage.data.credentials.isPro, false);
+    assert.equal(syncStorage.data.credentials.isLegacyUser, false);
+    assert.equal(syncStorage.data.credentials.installationDate, '2026-08-01T00:00:00.000Z');
+
+    const upgraded = await sendWorkerMessage(messageListener, {
+      type: 'activate_pro_license',
+      licenseKey: 'BD-PRO-WORKER-123'
+    });
     assert.equal(upgraded.success, true);
+    assert.equal('credentials' in upgraded, false);
     assert.equal(syncStorage.data.credentials.isPro, true);
     assert.equal(syncStorage.data.credentials.licenseKey, 'BD-PRO-WORKER-123');
 
@@ -595,16 +617,15 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
       }
     );
     const proRefresh = await sendWorkerMessage(messageListener, {
-      type: 'update_pro_status',
-      isPro: true
+      type: 'activate_pro_license',
+      licenseKey: 'BD-PRO-WORKER-123'
     });
     assert.equal(proRefresh.success, true);
     assert.equal(localStorage.data.activeRuleListId, 'list-1');
     const updatesBeforeDowngrade = dnrUpdates.length;
 
     const downgraded = await sendWorkerMessage(messageListener, {
-      type: 'update_pro_status',
-      isPro: false
+      type: 'logout_pro'
     });
     assert.equal(downgraded.success, true);
     assert.equal(syncStorage.data.credentials.licenseKey, null);
@@ -639,8 +660,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     syncStorage.data.credentials.isLegacyUser = true;
     localStorage.data.activeRuleListId = 'list-1';
     const legacyDowngrade = await sendWorkerMessage(messageListener, {
-      type: 'update_pro_status',
-      isPro: false
+      type: 'logout_pro'
     });
     assert.equal(legacyDowngrade.success, true);
     assert.equal(localStorage.data.activeRuleListId, 'list-1');
