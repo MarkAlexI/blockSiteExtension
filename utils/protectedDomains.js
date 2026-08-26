@@ -5,8 +5,7 @@ const SHARED_PROTECTED_REQUEST_DOMAINS = Object.freeze([
   'accounts.youtube.com',
   'blockdistraction.com',
   'ext.pp.ua',
-  'markdigital.cc',
-  'markdigital.com'
+  'markdigital.cc'
 ]);
 
 const CHROME_PROTECTED_REQUEST_DOMAINS = Object.freeze([
