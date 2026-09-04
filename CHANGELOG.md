@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.6] - 2026-09-04
+### Fixed
+- The Popup now opens the packaged Options page directly in Microsoft Edge builds, bypassing the tracked Edge Android `runtime.openOptionsPage()` silent no-op.
+- Chromium builds fall back to the packaged Options page if the native options API reports an error or throws.
+
+### Added
+- Added regression coverage proving that Edge bypasses the broken native API while Chrome retains its established `runtime.openOptionsPage()` path.
+
 ## [5.2.5] - 2026-09-04
 ### Fixed
 - Explicit non-web and browser-internal schemes are rejected for blacklist and whitelist targets instead of producing ineffective domain-anchored DNR filters.

@@ -28,6 +28,7 @@ import {
 } from './rules/blockingMode.js';
 import { installPageErrorReporter } from './telemetry/pageErrorReporter.js';
 import { initFeedbackPrompt } from './feedback/feedbackPrompt.js';
+import { getStoreConfig } from './utils/storeTarget.js';
 
 installPageErrorReporter('popup');
 
@@ -203,15 +204,46 @@ class PopupPage {
         window.close();
       }, 100);
     };
-    
-    if (chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage(() => {
-        closePopup();
-      });
+
+    const createOptionsTab = () => {
+      const url = chrome.runtime.getURL('options/options.html');
+
+      try {
+        chrome.tabs.create({ url }, () => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            this.logger.error('Error opening Options page:', error);
+            return;
+          }
+          closePopup();
+        });
+      } catch (error) {
+        this.logger.error('Error opening Options page:', error);
+      }
+    };
+
+    // Edge on Android reports openOptionsPage() as successful without opening
+    // anything. The store-target build flag is stable on both desktop and
+    // Android, so Edge opens the packaged page directly.
+    if (getStoreConfig().target === 'edge') {
+      createOptionsTab();
+      return;
+    }
+
+    if (typeof chrome.runtime.openOptionsPage === 'function') {
+      try {
+        chrome.runtime.openOptionsPage(() => {
+          if (chrome.runtime.lastError) {
+            createOptionsTab();
+            return;
+          }
+          closePopup();
+        });
+      } catch {
+        createOptionsTab();
+      }
     } else {
-      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }, () => {
-        closePopup();
-      });
+      createOptionsTab();
     }
   }
   
