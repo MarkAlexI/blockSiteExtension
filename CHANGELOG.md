@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.7] - 2026-09-07
+### Changed
+- Aligned release metadata with the Firefox 5.2.7 AMO compliance patch. The packaged Chromium and Edge runtime behavior is unchanged.
+
 ## [5.2.6] - 2026-09-04
 ### Fixed
 - The Popup now opens the packaged Options page directly in Microsoft Edge builds, bypassing the tracked Edge Android `runtime.openOptionsPage()` silent no-op.
