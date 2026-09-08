@@ -777,7 +777,6 @@ async function activateLicenseKey(requestedKey) {
 
     const credentials = await handleProStatusUpdate(true, {
       licenseKey,
-      subscriptionEmail: data.email,
       expiryDate: data.expiryDate
     });
 
@@ -822,7 +821,7 @@ async function syncLicenseKeyStatus() {
     if (credentials.isPro) {
       const updated = await handleProStatusUpdate(
         false,
-        { licenseKey: null, expiryDate: null, subscriptionEmail: null },
+        { licenseKey: null, expiryDate: null },
         { expectedLicenseKey: null, verificationGeneration }
       );
       if (!updated) return finishSupersededLicenseCheck();
@@ -863,8 +862,7 @@ async function syncLicenseKeyStatus() {
       
       const updated = await handleProStatusUpdate(false, {
         licenseKey: null,
-        expiryDate: null,
-        subscriptionEmail: null
+        expiryDate: null
       }, { expectedLicenseKey: currentKey, verificationGeneration });
       if (!updated) return finishSupersededLicenseCheck();
       logger.warn(`License Sync: Server rejected the stored key (${response.status}).`);
@@ -877,7 +875,6 @@ async function syncLicenseKeyStatus() {
     
     const updated = await handleProStatusUpdate(data.isPro, {
       licenseKey: currentKey,
-      subscriptionEmail: data.email,
       expiryDate: data.expiryDate
     }, { expectedLicenseKey: currentKey, verificationGeneration });
     if (!updated) return finishSupersededLicenseCheck();
@@ -1695,8 +1692,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         await handleProStatusUpdate(false, {
           licenseKey: null,
-          expiryDate: null,
-          subscriptionEmail: null
+          expiryDate: null
         });
         sendResponse({ success: true, isPro: false });
       } catch (error) {

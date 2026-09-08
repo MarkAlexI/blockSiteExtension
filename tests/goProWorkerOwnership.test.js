@@ -84,7 +84,6 @@ async function withGoProPage({
               ...api.storage.sync.data.credentials,
               isPro: true,
               licenseKey: request.licenseKey,
-              subscriptionEmail: data.email,
               expiryDate: data.expiryDate
             };
           }
@@ -102,7 +101,6 @@ async function withGoProPage({
           ...api.storage.sync.data.credentials,
           isPro: false,
           licenseKey: null,
-          subscriptionEmail: null,
           expiryDate: null
         };
       }
