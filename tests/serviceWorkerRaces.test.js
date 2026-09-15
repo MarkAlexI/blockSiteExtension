@@ -3305,7 +3305,8 @@ test('failed daily entitlement reads preserve the existing legacy menu and still
     const originalGet = api.storage.sync.get.bind(api.storage.sync);
     let credentialReads = 0;
     api.storage.sync.get = (keys, callback) => {
-      if (Array.isArray(keys) && keys.includes('credentials') && ++credentialReads === 3) {
+      // Uninstall no longer reads credentials; license check is read 1, menu refresh is read 2.
+      if (Array.isArray(keys) && keys.includes('credentials') && ++credentialReads === 2) {
         return Promise.reject(new Error('entitlement snapshot unavailable'));
       }
       return originalGet(keys, callback);
