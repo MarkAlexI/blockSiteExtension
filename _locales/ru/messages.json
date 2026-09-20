@@ -1090,5 +1090,8 @@
   },
   "rulelists_assignment_error": {
     "message": "Не удалось изменить привязку к выбранному списку."
+  },
+  "additionalsettingstitle": {
+    "message": "Дополнительные настройки"
   }
 }

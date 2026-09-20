@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Die toewysing aan die gekose lys kon nie verander word nie."
+  },
+  "additionalsettingstitle": {
+    "message": "Bykomende instellings"
+  },
+  "categorymanagementtitle": {
+    "message": "Kategorieblokkering"
   }
 }

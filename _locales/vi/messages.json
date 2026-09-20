@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Không thể thay đổi việc gán vào danh sách đã chọn."
+  },
+  "additionalsettingstitle": {
+    "message": "Cài đặt bổ sung"
+  },
+  "categorymanagementtitle": {
+    "message": "Chặn theo danh mục"
   }
 }

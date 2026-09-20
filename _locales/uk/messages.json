@@ -1090,5 +1090,8 @@
   },
   "rulelists_assignment_error": {
     "message": "Не вдалося змінити належність правила до вибраного списку."
+  },
+  "additionalsettingstitle": {
+    "message": "Додаткові налаштування"
   }
 }

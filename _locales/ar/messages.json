@@ -1084,5 +1084,14 @@
   },
   "rulelists_assignment_error": {
     "message": "تعذر تغيير إسناد القائمة المحددة."
+  },
+  "additionalsettingstitle": {
+    "message": "إعدادات إضافية"
+  },
+  "categorymanagementtitle": {
+    "message": "حظر الفئات"
+  },
+  "successfulfocussessionslabel": {
+    "message": "جلسات تركيز ناجحة"
   }
 }

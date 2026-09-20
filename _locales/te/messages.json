@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "ఎంచుకున్న జాబితా కేటాయింపును మార్చలేకపోయాము."
+  },
+  "additionalsettingstitle": {
+    "message": "అదనపు సెట్టింగ్‌లు"
+  },
+  "categorymanagementtitle": {
+    "message": "వర్గం నిరోధించడం"
   }
 }

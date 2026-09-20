@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Non è stato possibile modificare l’assegnazione all’elenco selezionato."
+  },
+  "additionalsettingstitle": {
+    "message": "Impostazioni aggiuntive"
+  },
+  "categorymanagementtitle": {
+    "message": "Blocco per categoria"
   }
 }

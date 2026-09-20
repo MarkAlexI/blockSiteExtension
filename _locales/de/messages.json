@@ -1081,5 +1081,17 @@
   },
   "rulelists_assignment_error": {
     "message": "Die Zuordnung zur ausgewählten Liste konnte nicht geändert werden."
+  },
+  "additionalsettingstitle": {
+    "message": "Zusätzliche Einstellungen"
+  },
+  "categorymanagementtitle": {
+    "message": "Kategorien blockieren"
+  },
+  "focussessionsoundtitle": {
+    "message": "Akustische Benachrichtigung für Fokus-Sitzungen"
+  },
+  "focussessionsounddesc": {
+    "message": "Einen Ton abspielen, wenn die Fokus-Sitzung endet."
   }
 }

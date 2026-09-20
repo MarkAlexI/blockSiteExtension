@@ -1078,5 +1078,20 @@
   },
   "rulelists_assignment_error": {
     "message": "Valitun luettelon määritystä ei voitu muuttaa."
+  },
+  "additionalsettingstitle": {
+    "message": "Lisäasetukset"
+  },
+  "categorymanagementtitle": {
+    "message": "Luokkien estäminen"
+  },
+  "licensesynced": {
+    "message": "Lisenssisi on synkronoitu tiliisi. Jos menetät käyttöoikeuden, voit palauttaa avaimesi täältä: "
+  },
+  "focussessionsoundtitle": {
+    "message": "Keskittymisistunnon ääni-ilmoitus"
+  },
+  "focussessionsounddesc": {
+    "message": "Toista ääni, kun keskittymisistunto päättyy."
   }
 }

@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Haikuwezekana kubadilisha ugawaji wa orodha iliyochaguliwa."
+  },
+  "additionalsettingstitle": {
+    "message": "Mipangilio ya Ziada"
+  },
+  "categorymanagementtitle": {
+    "message": "Kuzuia Kategoria"
   }
 }

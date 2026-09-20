@@ -1084,5 +1084,14 @@
   },
   "rulelists_assignment_error": {
     "message": "निवडलेल्या सूचीचे असाइनमेंट बदलता आले नाही."
+  },
+  "additionalsettingstitle": {
+    "message": "अतिरिक्त सेटिंग्ज"
+  },
+  "categorymanagementtitle": {
+    "message": "श्रेणी अवरोधन"
+  },
+  "blockedbutton": {
+    "message": "टॅब बंद करा"
   }
 }

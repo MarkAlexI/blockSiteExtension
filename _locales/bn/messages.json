@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "নির্বাচিত তালিকার অ্যাসাইনমেন্ট পরিবর্তন করা যায়নি।"
+  },
+  "additionalsettingstitle": {
+    "message": "অতিরিক্ত সেটিংস"
+  },
+  "categorymanagementtitle": {
+    "message": "বিভাগ ব্লক করা"
   }
 }

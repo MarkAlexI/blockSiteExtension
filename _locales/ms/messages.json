@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Tugasan kepada senarai yang dipilih tidak dapat diubah."
+  },
+  "additionalsettingstitle": {
+    "message": "Tetapan Tambahan"
+  },
+  "categorymanagementtitle": {
+    "message": "Sekatan Kategori"
   }
 }

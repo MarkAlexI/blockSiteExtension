@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "ไม่สามารถเปลี่ยนการกำหนดให้กับรายการที่เลือกได้"
+  },
+  "additionalsettingstitle": {
+    "message": "การตั้งค่าเพิ่มเติม"
+  },
+  "categorymanagementtitle": {
+    "message": "การบล็อกตามหมวดหมู่"
   }
 }

@@ -1081,5 +1081,17 @@
   },
   "rulelists_assignment_error": {
     "message": "De toewijzing aan de geselecteerde lijst kon niet worden gewijzigd."
+  },
+  "additionalsettingstitle": {
+    "message": "Aanvullende instellingen"
+  },
+  "categorymanagementtitle": {
+    "message": "Categorieën blokkeren"
+  },
+  "focussessionsoundtitle": {
+    "message": "Geluidsmelding voor focussessie"
+  },
+  "focussessionsounddesc": {
+    "message": "Speel een geluid af wanneer de focussessie eindigt."
   }
 }

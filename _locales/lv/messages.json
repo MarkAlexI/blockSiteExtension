@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Neizdevās mainīt piešķīrumu atlasītajam sarakstam."
+  },
+  "additionalsettingstitle": {
+    "message": "Papildu iestatījumi"
+  },
+  "categorymanagementtitle": {
+    "message": "Kategoriju bloķēšana"
   }
 }

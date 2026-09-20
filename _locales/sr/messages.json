@@ -1090,5 +1090,8 @@
   },
   "rulelists_assignment_error": {
     "message": "Није могуће променити доделу изабраној листи."
+  },
+  "additionalsettingstitle": {
+    "message": "Додатна подешавања"
   }
 }

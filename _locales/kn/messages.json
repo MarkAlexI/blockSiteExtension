@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "ಆಯ್ಕೆಮಾಡಿದ ಪಟ್ಟಿಯ ನಿಯೋಜನೆಯನ್ನು ಬದಲಾಯಿಸಲಾಗಲಿಲ್ಲ."
+  },
+  "additionalsettingstitle": {
+    "message": "ಹೆಚ್ಚುವರಿ ಸೆಟ್ಟಿಂಗ್‌ಗಳು"
+  },
+  "categorymanagementtitle": {
+    "message": "ವರ್ಗ ನಿರ್ಬಂಧಿಸುವಿಕೆ"
   }
 }

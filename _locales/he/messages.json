@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "לא ניתן לשנות את השיוך לרשימה שנבחרה."
+  },
+  "additionalsettingstitle": {
+    "message": "הגדרות נוספות"
+  },
+  "categorymanagementtitle": {
+    "message": "חסימת קטגוריות"
   }
 }

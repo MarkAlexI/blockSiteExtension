@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Tilldelningen till den valda listan kunde inte ändras."
+  },
+  "additionalsettingstitle": {
+    "message": "Ytterligare inställningar"
+  },
+  "categorymanagementtitle": {
+    "message": "Kategoriblockering"
   }
 }

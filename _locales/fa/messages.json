@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "تخصیص فهرست انتخاب‌شده تغییر نکرد."
+  },
+  "additionalsettingstitle": {
+    "message": "تنظیمات اضافی"
+  },
+  "categorymanagementtitle": {
+    "message": "مسدودسازی دسته‌بندی‌ها"
   }
 }

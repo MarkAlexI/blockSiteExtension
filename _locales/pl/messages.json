@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Nie udało się zmienić przypisania do wybranej listy."
+  },
+  "additionalsettingstitle": {
+    "message": "Ustawienia dodatkowe"
+  },
+  "categorymanagementtitle": {
+    "message": "Blokowanie kategorii"
   }
 }

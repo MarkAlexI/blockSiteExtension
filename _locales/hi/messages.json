@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "चुनी गई सूची का असाइनमेंट बदला नहीं जा सका।"
+  },
+  "additionalsettingstitle": {
+    "message": "अतिरिक्त सेटिंग्स"
+  },
+  "categorymanagementtitle": {
+    "message": "श्रेणी अवरोधन"
   }
 }

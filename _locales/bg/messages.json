@@ -1090,5 +1090,8 @@
   },
   "rulelists_assignment_error": {
     "message": "Задаването към избрания списък не можа да бъде променено."
+  },
+  "additionalsettingstitle": {
+    "message": "Допълнителни настройки"
   }
 }

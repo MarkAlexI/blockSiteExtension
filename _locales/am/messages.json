@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "የተመረጠውን የዝርዝር ምደባ መቀየር አልተቻለም።"
+  },
+  "additionalsettingstitle": {
+    "message": "ተጨማሪ ቅንብሮች"
+  },
+  "categorymanagementtitle": {
+    "message": "የምድብ እገዳ"
   }
 }

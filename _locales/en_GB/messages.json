@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "The selected list assignment could not be changed."
+  },
+  "additionalsettingstitle": {
+    "message": "Additional Settings"
+  },
+  "categorymanagementtitle": {
+    "message": "Category Blocking"
   }
 }

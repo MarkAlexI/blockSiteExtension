@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Dodelitve izbranemu seznamu ni bilo mogoče spremeniti."
+  },
+  "additionalsettingstitle": {
+    "message": "Dodatne nastavitve"
+  },
+  "categorymanagementtitle": {
+    "message": "Blokiranje kategorij"
   }
 }

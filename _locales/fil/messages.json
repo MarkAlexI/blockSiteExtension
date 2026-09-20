@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Hindi mabago ang pagtatalaga sa napiling listahan."
+  },
+  "additionalsettingstitle": {
+    "message": "Mga Karagdagang Setting"
+  },
+  "categorymanagementtitle": {
+    "message": "Pag-block ayon sa Kategorya"
   }
 }

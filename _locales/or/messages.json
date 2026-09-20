@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "ଚୟନିତ ତାଲିକାର ଅସାଇନମେଣ୍ଟ ପରିବର୍ତ୍ତନ କରାଯାଇପାରିଲା ନାହିଁ।"
+  },
+  "additionalsettingstitle": {
+    "message": "ଅତିରିକ୍ତ ସେଟିଂସ୍"
+  },
+  "categorymanagementtitle": {
+    "message": "ବର୍ଗ ଅବରୋଧ"
   }
 }

@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Priradenie k vybranému zoznamu sa nepodarilo zmeniť."
+  },
+  "additionalsettingstitle": {
+    "message": "Ďalšie nastavenia"
+  },
+  "categorymanagementtitle": {
+    "message": "Blokovanie kategórií"
   }
 }

@@ -1081,5 +1081,17 @@
   },
   "rulelists_assignment_error": {
     "message": "선택한 목록 할당을 변경할 수 없습니다."
+  },
+  "additionalsettingstitle": {
+    "message": "추가 설정"
+  },
+  "categorymanagementtitle": {
+    "message": "카테고리 차단"
+  },
+  "focussessionsoundtitle": {
+    "message": "집중 세션 소리 알림"
+  },
+  "focussessionsounddesc": {
+    "message": "집중 세션이 끝나면 소리를 재생합니다."
   }
 }

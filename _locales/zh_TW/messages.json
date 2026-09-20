@@ -1081,5 +1081,17 @@
   },
   "rulelists_assignment_error": {
     "message": "無法變更所選清單的指派。"
+  },
+  "additionalsettingstitle": {
+    "message": "其他設定"
+  },
+  "categorymanagementtitle": {
+    "message": "類別封鎖"
+  },
+  "focussessionsoundtitle": {
+    "message": "專注時段聲音通知"
+  },
+  "focussessionsounddesc": {
+    "message": "專注時段結束時播放聲音。"
   }
 }

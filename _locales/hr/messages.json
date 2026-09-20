@@ -1087,5 +1087,11 @@
   },
   "rulelists_assignment_error": {
     "message": "Nije moguće promijeniti dodjelu odabranom popisu."
+  },
+  "additionalsettingstitle": {
+    "message": "Dodatne postavke"
+  },
+  "categorymanagementtitle": {
+    "message": "Blokiranje kategorija"
   }
 }

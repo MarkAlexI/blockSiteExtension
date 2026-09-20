@@ -1084,5 +1084,14 @@
   },
   "rulelists_assignment_error": {
     "message": "தேர்ந்தெடுக்கப்பட்ட பட்டியல் ஒதுக்கீட்டை மாற்ற முடியவில்லை."
+  },
+  "errorremovingrule": {
+    "message": "விதியை அகற்றுவதில் பிழை"
+  },
+  "additionalsettingstitle": {
+    "message": "கூடுதல் அமைப்புகள்"
+  },
+  "categorymanagementtitle": {
+    "message": "வகைத் தடுப்பு"
   }
 }
