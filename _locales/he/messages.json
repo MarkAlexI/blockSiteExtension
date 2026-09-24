@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "חסימת קטגוריות"
+  },
+  "userguide": {
+    "message": "מדריך למשתמש"
   }
 }

@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Αποκλεισμός κατηγοριών"
+  },
+  "userguide": {
+    "message": "Οδηγός χρήσης"
   }
 }

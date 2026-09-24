@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Category Blocking"
+  },
+  "userguide": {
+    "message": "User Guide"
   }
 }

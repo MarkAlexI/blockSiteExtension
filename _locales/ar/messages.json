@@ -1093,5 +1093,8 @@
   },
   "successfulfocussessionslabel": {
     "message": "جلسات تركيز ناجحة"
+  },
+  "userguide": {
+    "message": "دليل المستخدم"
   }
 }

@@ -1093,5 +1093,8 @@
   },
   "focussessionsounddesc": {
     "message": "专注时段结束时播放声音。"
+  },
+  "userguide": {
+    "message": "用户指南"
   }
 }

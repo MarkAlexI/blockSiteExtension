@@ -1093,5 +1093,8 @@
   },
   "focussessionsounddesc": {
     "message": "Einen Ton abspielen, wenn die Fokus-Sitzung endet."
+  },
+  "userguide": {
+    "message": "Benutzerhandbuch"
   }
 }

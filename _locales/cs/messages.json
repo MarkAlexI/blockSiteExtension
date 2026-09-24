@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Blokování kategorií"
+  },
+  "userguide": {
+    "message": "Uživatelská příručka"
   }
 }

@@ -1093,5 +1093,8 @@
   },
   "rulelists_assignment_error": {
     "message": "The selected list assignment could not be changed."
+  },
+  "userguide": {
+    "message": "User Guide"
   }
 }

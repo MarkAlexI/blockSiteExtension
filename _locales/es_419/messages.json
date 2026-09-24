@@ -1111,5 +1111,8 @@
   },
   "rulelists_assignment_error": {
     "message": "No se pudo cambiar la asignación a la lista seleccionada."
+  },
+  "userguide": {
+    "message": "Guía del usuario"
   }
 }

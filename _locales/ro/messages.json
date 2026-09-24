@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Blocarea categoriilor"
+  },
+  "userguide": {
+    "message": "Ghid de utilizare"
   }
 }

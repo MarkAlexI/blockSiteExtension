@@ -1093,5 +1093,8 @@
   },
   "focussessionsounddesc": {
     "message": "集中セッションの終了時にサウンドを再生します。"
+  },
+  "userguide": {
+    "message": "ユーザーガイド"
   }
 }

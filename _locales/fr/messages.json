@@ -1093,5 +1093,8 @@
   },
   "focussessionsounddesc": {
     "message": "Émettre un son à la fin de la session de concentration."
+  },
+  "userguide": {
+    "message": "Guide d’utilisation"
   }
 }

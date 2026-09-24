@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Bloqueig per categories"
+  },
+  "userguide": {
+    "message": "Guia de l’usuari"
   }
 }

@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Kategooriate blokeerimine"
+  },
+  "userguide": {
+    "message": "Kasutusjuhend"
   }
 }

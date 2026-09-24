@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Blokowanie kategorii"
+  },
+  "userguide": {
+    "message": "Podręcznik użytkownika"
   }
 }

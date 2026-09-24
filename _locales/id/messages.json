@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "Pemblokiran Kategori"
+  },
+  "userguide": {
+    "message": "Panduan Pengguna"
   }
 }

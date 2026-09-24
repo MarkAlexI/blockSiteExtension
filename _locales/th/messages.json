@@ -1093,5 +1093,8 @@
   },
   "categorymanagementtitle": {
     "message": "การบล็อกตามหมวดหมู่"
+  },
+  "userguide": {
+    "message": "คู่มือผู้ใช้"
   }
 }
