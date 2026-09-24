@@ -21,7 +21,7 @@ import { RulePacksUI } from './rulePacksUI.js';
 import { DiagnosticsUI } from './diagnosticsUI.js';
 import { installPageErrorReporter } from '../telemetry/pageErrorReporter.js';
 import { TelemetryUI } from './telemetryUI.js';
-import { getStarterTipKeys } from './userGuidance.js';
+import { getStarterTipKeys, getStarterTipText } from './userGuidance.js';
 
 installPageErrorReporter('options');
 
@@ -216,7 +216,7 @@ class OptionsPage {
 
     for (const key of tipKeys) {
       const item = document.createElement('li');
-      item.textContent = t(key);
+      item.textContent = getStarterTipText(key, t);
       this.starterTipsList.append(item);
     }
 
