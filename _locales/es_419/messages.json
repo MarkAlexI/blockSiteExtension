@@ -1112,6 +1112,12 @@
   "rulelists_assignment_error": {
     "message": "No se pudo cambiar la asignación a la lista seleccionada."
   },
+  "startertip_path_rule": {
+    "message": "Bloquea una sección: Agrega la dirección de una sección específica, como example.com/videos, para mantener disponible el resto del sitio."
+  },
+  "startertip_pause_rule": {
+    "message": "Pausa sin eliminar: Desactiva una regla cuando necesites acceso temporal y vuelve a activarla más tarde."
+  },
   "userguide": {
     "message": "Guía del usuario"
   }
