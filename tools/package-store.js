@@ -22,6 +22,7 @@ if (!manifest.version) {
 
 const runtimePaths = [
   '_locales',
+  'backup',
   'blocked.html',
   'diagnostics',
   'dom',
