@@ -122,6 +122,8 @@ class PopupPage {
     this.storageChangeHandler = (changes, areaName) => {
       if (areaName !== 'local') return;
 
+      if (changes?.focusSession) void this.updateFocusUI();
+
       if (changes?.statistics) {
         this.updateStatisticsSummary(changes.statistics.newValue);
       }
@@ -650,12 +652,14 @@ class PopupPage {
   }
   
   async updateFocusUI() {
+    const renderGeneration = this.focusRenderGeneration = (this.focusRenderGeneration || 0) + 1;
     if (this.focusTimerInterval) {
       clearInterval(this.focusTimerInterval);
       this.focusTimerInterval = null;
     }
     
     const { focusActive, focusEndTime, isHardcore, focusMode } = await getFocusSessionState();
+    if (renderGeneration !== this.focusRenderGeneration) return;
     
     if (focusActive && focusEndTime > Date.now()) {
       this.focusStartView.classList.add('hidden');
