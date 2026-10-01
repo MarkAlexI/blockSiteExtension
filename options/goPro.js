@@ -46,7 +46,22 @@ if (versionText) {
 
 if (wrapper) {
   wrapper.style.maxHeight = '0px';
+  wrapper.inert = true;
 }
+
+function collapseProSection({ focusToggle = false } = {}) {
+  if (!wrapper?.classList.contains('open')) return;
+  wrapper.style.maxHeight = wrapper.scrollHeight + 'px';
+  wrapper.classList.remove('open');
+  wrapper.inert = true;
+  btn?.setAttribute('aria-expanded', 'false');
+  btn?.querySelector('.chevron')?.classList.remove('up');
+  requestAnimationFrame(() => {
+    if (!wrapper.classList.contains('open')) wrapper.style.maxHeight = '0px';
+  });
+  if (focusToggle) btn?.focus({ preventScroll: true });
+}
+
 if (btn) {
   const chevron = btn.querySelector('.chevron');
   
@@ -54,20 +69,18 @@ if (btn) {
     const isOpen = wrapper.classList.contains('open');
     if (!isOpen) {
       wrapper.classList.add('open');
+      wrapper.inert = false;
+      btn.setAttribute('aria-expanded', 'true');
       wrapper.style.maxHeight = content.scrollHeight + 'px';
       chevron.classList.add('up');
       
-      wrapper.addEventListener('transitionend', function handler() {
-        wrapper.style.maxHeight = 'none';
+      wrapper.addEventListener('transitionend', function handler(event) {
+        if (event.target !== wrapper || event.propertyName !== 'max-height') return;
+        if (wrapper.classList.contains('open')) wrapper.style.maxHeight = 'none';
         wrapper.removeEventListener('transitionend', handler);
       });
     } else {
-      wrapper.style.maxHeight = wrapper.scrollHeight + 'px';
-      requestAnimationFrame(() => {
-        wrapper.style.maxHeight = '0px';
-      });
-      wrapper.classList.remove('open');
-      chevron.classList.remove('up');
+      collapseProSection();
     }
   });
 }
@@ -146,6 +159,7 @@ if (licenseForm) {
       licenseMessage.textContent = t('proactivated') || 'Pro activated!';
       licenseMessage.className = 'status-message success show';
       await updateUI();
+      collapseProSection({ focusToggle: true });
       
     } catch (error) {
       logger.error('Activation Error:', error);
