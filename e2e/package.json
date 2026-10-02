@@ -1,0 +1,14 @@
+{
+  "name": "blockdistraction-chromium-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "list": "playwright test --list",
+    "report": "playwright show-report"
+  },
+  "devDependencies": { "playwright": "1.62.1" }
+}

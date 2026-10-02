@@ -1,0 +1,52 @@
+name: Chromium extension E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install test dependencies
+        working-directory: e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Build and unpack the CWS package
+        run: |
+          npm run package:cws
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, zipfile
+          target = Path(os.environ['RUNNER_TEMP']) / 'bd-e2e-extension'
+          archive = next(Path('dist').glob('*-cws.zip'))
+          with zipfile.ZipFile(archive) as package:
+              assert package.testzip() is None
+              package.extractall(target)
+          with Path(os.environ['GITHUB_ENV']).open('a') as env:
+              env.write(f'BD_EXTENSION_PATH={target}\n')
+          PY
+      - name: Run extension scenarios
+        working-directory: e2e
+        run: npm test
+      - name: Upload reports and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bd-chromium-e2e-${{ github.sha }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/results.json
+          if-no-files-found: warn
+          retention-days: 14
