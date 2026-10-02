@@ -75,6 +75,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
   const permissionsOnAdded = createEvent();
   let hostAccessGranted = true;
   let activeTabForQuery = null;
+  const currentTabs = new Map();
   let pageVisibilityState = 'visible';
   const createdTabs = [];
   const removedTabs = [];
@@ -181,6 +182,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
       onAlarm: alarmsOnAlarm
     },
     tabs: {
+      get: async id => currentTabs.get(id) || { id },
       query: async queryInfo => {
         if (queryInfo?.active === true && queryInfo?.lastFocusedWindow === true && activeTabForQuery) {
           return [structuredClone(activeTabForQuery)];
@@ -621,6 +623,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
       url: 'https://allowed.example/team'
     });
     assert.equal(removedTabs.includes(81), false);
+    currentTabs.set(82, { id: 82, url: 'https://blocked.example/' });
     await tabsOnUpdated.listeners[0](82, { url: 'https://blocked.example/' }, {
       id: 82,
       active: false,
