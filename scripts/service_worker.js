@@ -1424,7 +1424,8 @@ chrome.runtime.onStartup.addListener(() =>
     await initializeExtension({ reason: 'startup' });
     await checkAndRequestPermissions({ reason: 'startup' }, { notifyIfMissing: true });
 
-    await dailyLimitTracker.sample('startup');
+    await runAsyncHandler(ASYNC_HANDLER_OPERATIONS.STARTUP,
+      () => dailyLimitTracker.sample('startup'));
     logger.log("Extension startup - syncing DNR rules");
     await dnrSynchronizer.requestSync();
 
