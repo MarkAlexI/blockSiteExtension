@@ -216,7 +216,7 @@ class ExtensionHarness {
 export const test = base.extend({
   extension: async ({}, use, testInfo) => {
     const manifest = JSON.parse(await readFile(path.join(extensionPath, 'manifest.json'), 'utf8'));
-    const expectedVersion = process.env.BD_EXPECTED_VERSION || '5.3.9';
+    const expectedVersion = process.env.BD_EXPECTED_VERSION || '5.3.10';
     expect(manifest.version, 'The test target version must match BD_EXPECTED_VERSION').toBe(expectedVersion);
     expect(manifest.background.service_worker).toBe('scripts/service_worker.js');
     const profile = await mkdtemp(path.join(tmpdir(), 'bd-e2e-'));

@@ -128,6 +128,10 @@ class PopupPage {
         this.updateStatisticsSummary(changes.statistics.newValue);
       }
 
+      if (changes?.rulesGeneration) {
+        void this.loadRules();
+        return;
+      }
       if (!changes?.dailyRuleUsage) return;
       const previousUsage = changes.dailyRuleUsage.oldValue?.usageSeconds || {};
       const nextUsage = changes.dailyRuleUsage.newValue?.usageSeconds || {};
@@ -297,11 +301,12 @@ class PopupPage {
   
   async loadRules() {
     try {
-      const [rules, ruleListState, dailyUsageSeconds] = await Promise.all([
-        this.rulesManager.getRules(),
+      const [snapshot, ruleListState, dailyUsageSeconds] = await Promise.all([
+        this.rulesManager.getRulesSnapshot(),
         this.ruleListsManager.getState(),
         this.dailyLimitManager.getUsageSeconds()
       ]);
+      const { rules, generation } = snapshot;
       const hasRuleListAccess = this.isPro || this.isLegacyUser;
       const ruleLists = hasRuleListAccess
         ? ruleListState.lists
@@ -337,7 +342,8 @@ class PopupPage {
           assignment.blockingMode,
           assignment.dailyLimit,
           getAssignmentUsageSeconds(dailyUsageSeconds, rule.id, assignment.listId),
-          [assignment]
+          [assignment],
+          generation
         );
       });
 
@@ -462,7 +468,7 @@ class PopupPage {
     }
   }
   
-  createRuleInputs(blockURLValue = '', redirectURLValue = '', ruleId = null, disabledByUser = false, category = 'uncategorized', schedule = null, isWhitelist = false, listIds = [GENERAL_RULE_LIST_ID], blockingMode = null, dailyLimit = null, dailyUsageSeconds = 0, assignments = null) {
+  createRuleInputs(blockURLValue = '', redirectURLValue = '', ruleId = null, disabledByUser = false, category = 'uncategorized', schedule = null, isWhitelist = false, listIds = [GENERAL_RULE_LIST_ID], blockingMode = null, dailyLimit = null, dailyUsageSeconds = 0, assignments = null, expectedGeneration = null) {
     const ruleDiv = document.createElement('div');
     const isCategoryMuted = this.activeDisabledCategories.includes(category);
     const normalizedListIds = isWhitelist ? [GENERAL_RULE_LIST_ID] : (Array.isArray(listIds) ? listIds : [listIds]);
@@ -596,7 +602,8 @@ class PopupPage {
               ruleId,
               activeAssignment?.listId || this.activeRuleListId || GENERAL_RULE_LIST_ID,
               disabledByUser,
-              isMuted
+              isMuted,
+              expectedGeneration
             );
           });
           ruleDiv.appendChild(toggleElement);
@@ -610,7 +617,7 @@ class PopupPage {
         
         deleteButton.addEventListener('click', async () => {
           if (isMuted) return;
-          await this.handleRuleDeletion(deleteButton, ruleId, blockURL.value, ruleDiv);
+          await this.handleRuleDeletion(deleteButton, ruleId, blockURL.value, ruleDiv, expectedGeneration, effectiveAssignments[0]?.listId || GENERAL_RULE_LIST_ID);
         });
         
         ruleDiv.appendChild(deleteButton);
@@ -781,14 +788,14 @@ class PopupPage {
     }
   }
 
-  async handleRuleToggle(ruleId, listId, disabledByUser, isMuted = false) {
+  async handleRuleToggle(ruleId, listId, disabledByUser, isMuted = false, expectedGeneration = null) {
     if (isMuted) return;
 
     const isDisablingRule = disabledByUser !== true;
     if (isDisablingRule && !await this.authorizePasswordProtectedRuleChange()) return;
 
     try {
-      await this.rulesClient.toggleRule(ruleId, listId || GENERAL_RULE_LIST_ID);
+      await this.rulesClient.toggleRule(ruleId, listId || GENERAL_RULE_LIST_ID, expectedGeneration);
       await this.loadRules();
     } catch (error) {
       this.logRulesMutationFailure('Toggle rule error:', error);
@@ -799,6 +806,9 @@ class PopupPage {
   handleRulesMutationError(error, fallbackKey = 'erroraddingrule') {
     if (error.code === 'validation_failed') {
       this.rulesUI.showValidationErrors(error.validationErrors || []);
+    } else if (error.code === 'rules_state_changed') {
+      customAlert(t('errorupdatingrules'));
+      void this.loadRules();
     } else if (error.code === 'rule_already_exists') {
       customAlert(t('alertruleexist'));
     } else if (error.code === 'conflict_blacklist') {
@@ -854,7 +864,7 @@ class PopupPage {
     }
   }
   
-  async handleRuleDeletion(deleteButton, ruleId, blockURL, ruleDiv) {
+  async handleRuleDeletion(deleteButton, ruleId, blockURL, ruleDiv, expectedGeneration = null, assignmentListId = GENERAL_RULE_LIST_ID) {
     try {
       if (!blockURL) {
         ruleDiv.remove();
@@ -882,9 +892,9 @@ class PopupPage {
             try {
               if (blockURL && ruleId !== null) {
                 if (ruleDiv.dataset.isWhitelist === 'true') {
-                  await this.rulesClient.deleteRule(ruleId);
+                  await this.rulesClient.deleteRule(ruleId, expectedGeneration);
                 } else {
-                  await this.rulesClient.removeAssignment(ruleId, this.activeRuleListId);
+                  await this.rulesClient.removeAssignment(ruleId, assignmentListId, expectedGeneration);
                 }
                 customAlert('- 1');
               } else {

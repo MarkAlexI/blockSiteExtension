@@ -330,6 +330,10 @@ class OptionsPage {
         void this.renderProTips(this.isPro || this.isLegacyUser);
       }
       if (changes?.focusSession) void this.settingsManager.initFocusSessionBanner();
+      if (changes?.rulesGeneration) {
+        void this.refreshProfileView();
+        return;
+      }
       if (!changes?.dailyRuleUsage) return;
       const previousUsage = changes.dailyRuleUsage.oldValue?.usageSeconds || {};
       const nextUsage = changes.dailyRuleUsage.newValue?.usageSeconds || {};
@@ -395,6 +399,9 @@ class OptionsPage {
   handleRulesMutationError(error, fallbackKey = 'errorupdatingrules') {
     if (error.code === 'validation_failed') {
       this.rulesUI.showValidationErrors(error.validationErrors || []);
+    } else if (error.code === 'rules_state_changed') {
+      this.rulesUI.showErrorMessage(t('errorupdatingrules'));
+      void this.refreshProfileView();
     } else if (error.code === 'rule_already_exists') {
       let message = t('alertruleexist');
       if (error.conflict?.listId === GENERAL_RULE_LIST_ID &&
@@ -429,7 +436,7 @@ class OptionsPage {
     }
   }
 
-  async handleRuleToggle(ruleId, assignment, isMuted = false) {
+  async handleRuleToggle(ruleId, assignment, isMuted = false, expectedGeneration = null) {
     if (isMuted) return;
 
     const isDisablingRule = assignment?.disabledByUser !== true;
@@ -438,7 +445,8 @@ class OptionsPage {
     try {
       await this.rulesClient.toggleRule(
         ruleId,
-        assignment?.listId || GENERAL_RULE_LIST_ID
+        assignment?.listId || GENERAL_RULE_LIST_ID,
+        expectedGeneration
       );
       await this.refreshProfileView();
     } catch (error) {
@@ -450,12 +458,13 @@ class OptionsPage {
   async refreshProfileView() {
     const refreshId = ++this.profileRefreshId;
     try {
-      const [rules, state, dailyUsageSeconds] = await Promise.all([
-        this.rulesManager.getRules(),
+      const [snapshot, state, dailyUsageSeconds] = await Promise.all([
+        this.rulesManager.getRulesSnapshot(),
         this.ruleListsManager.getState(),
         this.dailyLimitManager.getUsageSeconds()
       ]);
       if (refreshId !== this.profileRefreshId) return;
+      const { rules, generation } = snapshot;
 
       const hasRuleListAccess = this.isPro || this.isLegacyUser;
       const lists = hasRuleListAccess
@@ -498,9 +507,9 @@ class OptionsPage {
       }
 
       const viewItems = filteredRules.flatMap(rule => {
-        if (rule.isWhitelist) return [{ rule, assignment: getRuleAssignments(rule)[0] }];
+        if (rule.isWhitelist) return [{ rule, assignment: getRuleAssignments(rule)[0], generation }];
         const assignment = getRuleAssignment(rule, activeRuleListId);
-        return assignment ? [{ rule, assignment }] : [];
+        return assignment ? [{ rule, assignment, generation }] : [];
       });
 
       const canEdit = hasRuleListAccess || countFreeRules(rules) <= MAX_RULES_LIMIT;
@@ -560,20 +569,20 @@ class OptionsPage {
   }
 
   createRuleRow(item, index, canEdit, disabledCategories = [], dailyUsageSeconds = {}) {
-    const { rule, assignment } = item;
+    const { rule, assignment, generation = null } = item;
     const isCategoryMuted = disabledCategories.includes(rule.category);
     const isMuted = isCategoryMuted;
     const row = this.rulesUI.createRuleDisplayRow(
       rule,
       assignment,
       index,
-      (rowElement, ruleId, targetRule, targetAssignment) => this.toggleEditMode(rowElement, ruleId, targetRule, targetAssignment),
+      (rowElement, ruleId, targetRule, targetAssignment) => this.toggleEditMode(rowElement, ruleId, targetRule, targetAssignment, generation),
       (event, ruleId, targetAssignment) => {
         return rule.isWhitelist
-          ? this.handleRuleDeletion(event, ruleId)
-          : this.handleRuleAssignmentDeletion(event, ruleId, targetAssignment?.listId);
+          ? this.handleRuleDeletion(event, ruleId, generation)
+          : this.handleRuleAssignmentDeletion(event, ruleId, targetAssignment?.listId, generation);
       },
-      ruleId => this.handleRuleToggle(ruleId, assignment, isMuted),
+      ruleId => this.handleRuleToggle(ruleId, assignment, isMuted, generation),
       canEdit,
       disabledCategories,
       dailyUsageSeconds,
@@ -585,7 +594,7 @@ class OptionsPage {
     return row;
   }
 
-  async handleRuleAssignmentDeletion(event, ruleId, listId) {
+  async handleRuleAssignmentDeletion(event, ruleId, listId, expectedGeneration = null) {
     if (!listId) return;
     try {
       const deleteButton = event.target;
@@ -605,7 +614,7 @@ class OptionsPage {
         deleteButton,
         async () => {
           try {
-            await this.rulesClient.removeAssignment(ruleId, listId);
+            await this.rulesClient.removeAssignment(ruleId, listId, expectedGeneration);
             await this.refreshProfileView();
           } catch (error) {
             this.logRulesMutationFailure('Remove rule assignment error:', error);
@@ -621,7 +630,7 @@ class OptionsPage {
     }
   }
 
-  async handleRuleDeletion(event, ruleId) {
+  async handleRuleDeletion(event, ruleId, expectedGeneration = null) {
     try {
       const deleteButton = event.target;
       if (this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
@@ -640,12 +649,12 @@ class OptionsPage {
         deleteButton,
         async () => {
             try {
-              await this.rulesClient.deleteRule(ruleId);
+              await this.rulesClient.deleteRule(ruleId, expectedGeneration);
               await this.refreshProfileView();
               this.rulesUI.showSuccessMessage(t('ruleddeleted'), this.statusElement);
             } catch (error) {
               this.logRulesMutationFailure('Delete rule error:', error);
-              this.rulesUI.showErrorMessage(t('errorremovingrule'));
+              this.handleRulesMutationError(error, 'errorremovingrule');
             }
           },
           isStrictMode,
@@ -657,7 +666,7 @@ class OptionsPage {
     }
   }
   
-  async toggleEditMode(row, ruleId, rule, assignment) {
+  async toggleEditMode(row, ruleId, rule, assignment, expectedGeneration = null) {
     const hasPaidAccess = this.isPro === true || this.isLegacyUser === true;
     let settings;
     try {
@@ -693,13 +702,15 @@ class OptionsPage {
         blockingConfig,
         targetListId,
         assignment?.disabledByUser === true,
-        isWhitelist
+        isWhitelist,
+        expectedGeneration
       ),
       () => this.refreshProfileView(),
       (targetRuleId, listId, button) => this.handleRuleAssignmentDeletion(
         { target: button },
         targetRuleId,
-        listId
+        listId,
+        expectedGeneration
       ),
       this.isPro || this.isLegacyUser,
       assignment?.disabledByUser === true
@@ -713,10 +724,11 @@ class OptionsPage {
     row.replaceWith(editRow);
   }
 
-  async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false) {
+  async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false, expectedGeneration = null) {
     try {
       await this.rulesClient.updateRule({
         ruleId,
+        expectedGeneration,
         assignmentListId: isWhitelist ? GENERAL_RULE_LIST_ID : sourceListId,
         blockURL: newBlock,
         redirectURL: isWhitelist ? '' : newRedirect,
