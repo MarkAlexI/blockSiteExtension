@@ -436,7 +436,7 @@ class OptionsPage {
     }
   }
 
-  async handleRuleToggle(ruleId, assignment, isMuted = false, expectedGeneration = null) {
+  async handleRuleToggle(ruleId, assignment, isMuted = false, expectedGeneration = null, expectedRevision = null) {
     if (isMuted) return;
 
     const isDisablingRule = assignment?.disabledByUser !== true;
@@ -446,7 +446,8 @@ class OptionsPage {
       await this.rulesClient.toggleRule(
         ruleId,
         assignment?.listId || GENERAL_RULE_LIST_ID,
-        expectedGeneration
+        expectedGeneration,
+        expectedRevision
       );
       await this.refreshProfileView();
     } catch (error) {
@@ -464,7 +465,7 @@ class OptionsPage {
         this.dailyLimitManager.getUsageSeconds()
       ]);
       if (refreshId !== this.profileRefreshId) return;
-      const { rules, generation } = snapshot;
+      const { rules, generation, revisions = {} } = snapshot;
 
       const hasRuleListAccess = this.isPro || this.isLegacyUser;
       const lists = hasRuleListAccess
@@ -507,9 +508,9 @@ class OptionsPage {
       }
 
       const viewItems = filteredRules.flatMap(rule => {
-        if (rule.isWhitelist) return [{ rule, assignment: getRuleAssignments(rule)[0], generation }];
+        if (rule.isWhitelist) return [{ rule, assignment: getRuleAssignments(rule)[0], generation, revision: revisions[rule.id] ?? null }];
         const assignment = getRuleAssignment(rule, activeRuleListId);
-        return assignment ? [{ rule, assignment, generation }] : [];
+        return assignment ? [{ rule, assignment, generation, revision: revisions[rule.id] ?? null }] : [];
       });
 
       const canEdit = hasRuleListAccess || countFreeRules(rules) <= MAX_RULES_LIMIT;
@@ -569,20 +570,20 @@ class OptionsPage {
   }
 
   createRuleRow(item, index, canEdit, disabledCategories = [], dailyUsageSeconds = {}) {
-    const { rule, assignment, generation = null } = item;
+    const { rule, assignment, generation = null, revision = null } = item;
     const isCategoryMuted = disabledCategories.includes(rule.category);
     const isMuted = isCategoryMuted;
     const row = this.rulesUI.createRuleDisplayRow(
       rule,
       assignment,
       index,
-      (rowElement, ruleId, targetRule, targetAssignment) => this.toggleEditMode(rowElement, ruleId, targetRule, targetAssignment, generation),
+      (rowElement, ruleId, targetRule, targetAssignment) => this.toggleEditMode(rowElement, ruleId, targetRule, targetAssignment, generation, revision),
       (event, ruleId, targetAssignment) => {
         return rule.isWhitelist
-          ? this.handleRuleDeletion(event, ruleId, generation)
-          : this.handleRuleAssignmentDeletion(event, ruleId, targetAssignment?.listId, generation);
+          ? this.handleRuleDeletion(event, ruleId, generation, revision)
+          : this.handleRuleAssignmentDeletion(event, ruleId, targetAssignment?.listId, generation, revision);
       },
-      ruleId => this.handleRuleToggle(ruleId, assignment, isMuted, generation),
+      ruleId => this.handleRuleToggle(ruleId, assignment, isMuted, generation, revision),
       canEdit,
       disabledCategories,
       dailyUsageSeconds,
@@ -594,7 +595,7 @@ class OptionsPage {
     return row;
   }
 
-  async handleRuleAssignmentDeletion(event, ruleId, listId, expectedGeneration = null) {
+  async handleRuleAssignmentDeletion(event, ruleId, listId, expectedGeneration = null, expectedRevision = null) {
     if (!listId) return;
     try {
       const deleteButton = event.target;
@@ -614,7 +615,7 @@ class OptionsPage {
         deleteButton,
         async () => {
           try {
-            await this.rulesClient.removeAssignment(ruleId, listId, expectedGeneration);
+            await this.rulesClient.removeAssignment(ruleId, listId, expectedGeneration, expectedRevision);
             await this.refreshProfileView();
           } catch (error) {
             this.logRulesMutationFailure('Remove rule assignment error:', error);
@@ -630,7 +631,7 @@ class OptionsPage {
     }
   }
 
-  async handleRuleDeletion(event, ruleId, expectedGeneration = null) {
+  async handleRuleDeletion(event, ruleId, expectedGeneration = null, expectedRevision = null) {
     try {
       const deleteButton = event.target;
       if (this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
@@ -649,7 +650,7 @@ class OptionsPage {
         deleteButton,
         async () => {
             try {
-              await this.rulesClient.deleteRule(ruleId, expectedGeneration);
+              await this.rulesClient.deleteRule(ruleId, expectedGeneration, expectedRevision);
               await this.refreshProfileView();
               this.rulesUI.showSuccessMessage(t('ruleddeleted'), this.statusElement);
             } catch (error) {
@@ -666,7 +667,7 @@ class OptionsPage {
     }
   }
   
-  async toggleEditMode(row, ruleId, rule, assignment, expectedGeneration = null) {
+  async toggleEditMode(row, ruleId, rule, assignment, expectedGeneration = null, expectedRevision = null) {
     const hasPaidAccess = this.isPro === true || this.isLegacyUser === true;
     let settings;
     try {
@@ -703,14 +704,16 @@ class OptionsPage {
         targetListId,
         assignment?.disabledByUser === true,
         isWhitelist,
-        expectedGeneration
+        expectedGeneration,
+        expectedRevision
       ),
       () => this.refreshProfileView(),
       (targetRuleId, listId, button) => this.handleRuleAssignmentDeletion(
         { target: button },
         targetRuleId,
         listId,
-        expectedGeneration
+        expectedGeneration,
+        expectedRevision
       ),
       this.isPro || this.isLegacyUser,
       assignment?.disabledByUser === true
@@ -724,11 +727,12 @@ class OptionsPage {
     row.replaceWith(editRow);
   }
 
-  async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false, expectedGeneration = null) {
+  async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false, expectedGeneration = null, expectedRevision = null) {
     try {
       await this.rulesClient.updateRule({
         ruleId,
         expectedGeneration,
+        expectedRevision,
         assignmentListId: isWhitelist ? GENERAL_RULE_LIST_ID : sourceListId,
         blockURL: newBlock,
         redirectURL: isWhitelist ? '' : newRedirect,
