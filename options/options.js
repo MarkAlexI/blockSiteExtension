@@ -479,6 +479,7 @@ class OptionsPage {
       const disabledCategories = activeProfile?.disabledCategories || [];
 
       this.ruleLists = lists;
+      this.ruleListSnapshot = state;
       this.activeRuleListId = activeRuleListId;
       this.updateRuleListCreationState();
 
@@ -508,9 +509,9 @@ class OptionsPage {
       }
 
       const viewItems = filteredRules.flatMap(rule => {
-        if (rule.isWhitelist) return [{ rule, assignment: getRuleAssignments(rule)[0], generation, revision: revisions[rule.id] ?? null }];
+        if (rule.isWhitelist) return [{ rule, assignment: getRuleAssignments(rule)[0], generation, revision: revisions[rule.id] ?? null, listRevisions: state.revisions || {} }];
         const assignment = getRuleAssignment(rule, activeRuleListId);
-        return assignment ? [{ rule, assignment, generation, revision: revisions[rule.id] ?? null }] : [];
+        return assignment ? [{ rule, assignment, generation, revision: revisions[rule.id] ?? null, listRevisions: state.revisions || {} }] : [];
       });
 
       const canEdit = hasRuleListAccess || countFreeRules(rules) <= MAX_RULES_LIMIT;
@@ -570,14 +571,14 @@ class OptionsPage {
   }
 
   createRuleRow(item, index, canEdit, disabledCategories = [], dailyUsageSeconds = {}) {
-    const { rule, assignment, generation = null, revision = null } = item;
+    const { rule, assignment, generation = null, revision = null, listRevisions = {} } = item;
     const isCategoryMuted = disabledCategories.includes(rule.category);
     const isMuted = isCategoryMuted;
     const row = this.rulesUI.createRuleDisplayRow(
       rule,
       assignment,
       index,
-      (rowElement, ruleId, targetRule, targetAssignment) => this.toggleEditMode(rowElement, ruleId, targetRule, targetAssignment, generation, revision),
+      (rowElement, ruleId, targetRule, targetAssignment) => this.toggleEditMode(rowElement, ruleId, targetRule, targetAssignment, generation, revision, listRevisions),
       (event, ruleId, targetAssignment) => {
         return rule.isWhitelist
           ? this.handleRuleDeletion(event, ruleId, generation, revision)
@@ -667,7 +668,7 @@ class OptionsPage {
     }
   }
   
-  async toggleEditMode(row, ruleId, rule, assignment, expectedGeneration = null, expectedRevision = null) {
+  async toggleEditMode(row, ruleId, rule, assignment, expectedGeneration = null, expectedRevision = null, expectedListRevisions = {}) {
     const hasPaidAccess = this.isPro === true || this.isLegacyUser === true;
     let settings;
     try {
@@ -705,7 +706,8 @@ class OptionsPage {
         assignment?.disabledByUser === true,
         isWhitelist,
         expectedGeneration,
-        expectedRevision
+        expectedRevision,
+        expectedListRevisions
       ),
       () => this.refreshProfileView(),
       (targetRuleId, listId, button) => this.handleRuleAssignmentDeletion(
@@ -727,12 +729,13 @@ class OptionsPage {
     row.replaceWith(editRow);
   }
 
-  async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false, expectedGeneration = null, expectedRevision = null) {
+  async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false, expectedGeneration = null, expectedRevision = null, expectedListRevisions = {}) {
     try {
       await this.rulesClient.updateRule({
         ruleId,
         expectedGeneration,
         expectedRevision,
+        expectedListRevisions,
         assignmentListId: isWhitelist ? GENERAL_RULE_LIST_ID : sourceListId,
         blockURL: newBlock,
         redirectURL: isWhitelist ? '' : newRedirect,
@@ -769,6 +772,10 @@ class OptionsPage {
         : (this.isPro || this.isLegacyUser
             ? resolveRuleListContext(this.ruleLists, this.activeRuleListId || GENERAL_RULE_LIST_ID)
             : GENERAL_RULE_LIST_ID);
+      const listContext = {
+        generation: this.ruleListSnapshot?.generation ?? null,
+        revisions: { ...this.ruleListSnapshot?.revisions }
+      };
       const newRow = this.rulesUI.createAddRuleRow(
         (blockValue, redirectValue, category, blockingConfig, listId, rowElement) => this.saveNewRule(
           blockValue,
@@ -777,7 +784,8 @@ class OptionsPage {
           blockingConfig,
           listId,
           rowElement,
-          isWhitelist
+          isWhitelist,
+          listContext
         ),
         rowElement => rowElement.remove(),
         this.isPro || this.isLegacyUser,
@@ -791,9 +799,11 @@ class OptionsPage {
     }
   }
 
-  async saveNewRule(newBlock, newRedirect, newCategory, blockingConfig, listId, row, isWhitelist = false) {
+  async saveNewRule(newBlock, newRedirect, newCategory, blockingConfig, listId, row, isWhitelist = false, listContext = null) {
     try {
       const response = await this.rulesClient.addRule({
+        expectedGeneration: listContext?.generation ?? null,
+        expectedListRevisions: listContext?.revisions || {},
         blockURL: newBlock,
         redirectURL: isWhitelist ? '' : newRedirect,
         category: isWhitelist ? 'whitelist' : newCategory,
@@ -816,7 +826,7 @@ class OptionsPage {
   async addRulePack(packId, entryIds, schedule = null) {
     try {
       const targetListId = resolveRuleListContext(this.ruleLists, this.activeRuleListId || GENERAL_RULE_LIST_ID);
-      const response = await this.rulesClient.addMany(packId, entryIds, schedule, targetListId);
+      const response = await this.rulesClient.addMany(packId, entryIds, schedule, targetListId, this.ruleListSnapshot?.generation ?? null, this.ruleListSnapshot?.revisions || {});
       await this.refreshProfileView();
       return response;
     } catch (error) {
