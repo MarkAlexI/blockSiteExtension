@@ -5,7 +5,7 @@
 ![GitHub forks](https://img.shields.io/github/forks/MarkAlexI/blockSiteExtension?style=social)
 ![Last commit](https://img.shields.io/github/last-commit/MarkAlexI/blockSiteExtension)
 ![Issues](https://img.shields.io/github/issues/MarkAlexI/blockSiteExtension)
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-v5.3.15-brightgreen?logo=google-chrome)](https://chromewebstore.google.com/detail/kfhgdgokgjmdboidlhphajinmgpcmmec)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-v5.3.16-brightgreen?logo=google-chrome)](https://chromewebstore.google.com/detail/kfhgdgokgjmdboidlhphajinmgpcmmec)
 [![AMO](https://img.shields.io/amo/v/blockersite)](https://addons.mozilla.org/uk/firefox/addon/blockersite/)
 
 ## About
@@ -28,6 +28,8 @@ npm run check
 - `npm run check` runs the complete pre-release verification.
 
 Node.js 20 or newer is required.
+
+When payment suspends Pro access, stored rules and Rule List profiles are preserved. A suspended valid license remains stored and is checked on the existing startup, daily and manual verification paths, so payment can restore Pro without re-entering the key. Free access selects General; after Pro returns, select a custom profile again to activate its rules. Explicit logout or a definitive key rejection removes the stored key. Access changes take effect when the extension next verifies the license.
 
 ## Installation
 
