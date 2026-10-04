@@ -82,7 +82,6 @@
               </button>
             </form>
             
-            <p id="license-message" class="error hidden"></p>
           </div>
           
           <div id="pro-active-view">
@@ -93,6 +92,14 @@
             </p>
             <a href="https://blockdistraction.com/account.html" target="_blank" rel="noopener noreferrer">blockdistraction.com/account.html</a>
             
+          </div>
+          <div id="pro-suspended-view" class="hidden" hidden>
+            <h2 data-i18n="proaccessunavailable">Pro access is currently unavailable</h2>
+            <p data-i18n="prolicensekept">Your license is saved. Check its status again without re-entering the key. Your rules remain saved.</p>
+            <a href="https://blockdistraction.com/account.html" target="_blank" rel="noopener noreferrer">blockdistraction.com/account.html</a>
+          </div>
+          <p id="license-message" class="error hidden" role="status" aria-live="polite"></p>
+          <div id="pro-account-actions" class="hidden" hidden>
             <hr />
             <div class="pro-action-buttons">
               <button id="force-sync-btn" class="link-button" data-i18n="forcesync">
