@@ -2,7 +2,7 @@ import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: 'chromium.spec.mjs',
+  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs'],
   fullyParallel: false,
   workers: 1,
   retries: 0,

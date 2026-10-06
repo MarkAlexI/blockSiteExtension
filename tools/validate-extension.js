@@ -126,8 +126,12 @@ if (manifest) {
   }
 
   const readme = await readFile(path.join(root, 'README.md'), 'utf8');
-  if (!readme.includes(`Chrome%20Web%20Store-v${manifest.version}-`)) {
-    errors.push(`README.md: Chrome Web Store badge is not v${manifest.version}`);
+  if (!readme.includes(`Chromium%20Source-v${manifest.version}-`)) {
+    errors.push(`README.md: Chromium Source badge is not v${manifest.version}`);
+  }
+  if (!readme.includes('img.shields.io/chrome-web-store/v/kfhgdgokgjmdboidlhphajinmgpcmmec') ||
+      readme.includes('Chrome%20Web%20Store-v')) {
+    errors.push('README.md: Chrome Web Store badge must read the published version from the store');
   }
 
   const changelog = await readFile(path.join(root, 'CHANGELOG.md'), 'utf8');

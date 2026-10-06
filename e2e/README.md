@@ -1,19 +1,17 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.6**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.17**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
-Набір підготовлено для реального Chromium із завантаженим MV3-розширенням.
-Під час підготовки в ChatGPT Work браузер не зміг запуститися:
-`process_singleton_posix.cc: socket() failed: Operation not permitted (1)`.
-Це блокування середовища до входу в scenario body. Жоден браузерний сценарій
-не позначено пройденим. `--list`, синтаксичні перевірки та Node regression suite
-не є E2E-проходженням. GitHub Actions workflow підготовлено, але не запускалося.
+Набір запускає реальний Chromium із завантаженим MV3-розширенням.
+Оцінюйте результат для конкретного commit SHA у GitHub Actions та
+`results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
+Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
 ## Локальний запуск
 
-З кореня Chromium-репозиторію, після застосування змін 5.3.6:
+З кореня Chromium-репозиторію, після застосування змін 5.3.17:
 
 ```sh
 cd e2e
@@ -41,29 +39,31 @@ npm run report
 він видаляється. Перевірка headless та headed — окремі запуски.
 
 За замовчуванням extension path — батьківська папка `e2e`. Для перевірки
-**байтів store ZIP** розпакуйте `BD534-cws.zip` у звичайну папку та вкажіть її:
+**байтів store ZIP** розпакуйте `BlockDistraction-5.3.17-cws.zip` у звичайну папку та вкажіть її:
 
 PowerShell:
 
 ```powershell
-$env:BD_EXTENSION_PATH = 'E:\Work\BD534-cws'
+$env:BD_EXTENSION_PATH = 'E:\Work\BlockDistraction-5.3.17-cws'
 npm test
 ```
 
 Bash:
 
 ```sh
-BD_EXTENSION_PATH=/absolute/path/BD534-cws npm test
+BD_EXTENSION_PATH=/absolute/path/BlockDistraction-5.3.17-cws npm test
 ```
 
-Runner перевіряє manifest version. Для майбутньої версії явно задайте
-`BD_EXPECTED_VERSION`. Це не означає автоматичної сумісності набору з нею.
+Runner перевіряє manifest version. За замовчуванням `BD_EXPECTED_VERSION`
+береться з `manifest.json` поточного checkout через `target-version.mjs`.
+Для іншої версії пакета задайте override явно; це не означає автоматичної
+сумісності набору з нею.
 
 ## GitHub Actions
 
-Патч додає `.github/workflows/e2e-chromium.yml`. Після додавання workflow до
-default branch у власному репозиторії: **Actions → Chromium extension E2E →
-Run workflow**. Автоматичного запуску на кожен push немає.
+`.github/workflows/e2e-chromium.yml` запускається для pull request і push
+у `main`. Для ручного запуску: **Actions → Chromium extension E2E →
+Run workflow**.
 
 Workflow збирає CWS ZIP із tracked HEAD чинним `package:cws`, розпаковує його
 та запускає тести на цьому пакеті. Зберігає HTML/JSON-звіти, screenshots,
@@ -87,6 +87,9 @@ final extension state і traces як workflow artifact на 14 днів.
 | Paid commit перед logout | Native storage event в іншому Options запускає logout після початку rule commit; збережений порядок і відповіді |
 | Trusted Legacy після logout | Trusted installationDate fixture; advanced controls і Daily Limit add залишаються доступними |
 | Тимчасова помилка verification | Mock HTTP 500; Pro зберігається, наступна paid action проходить |
+| Payment suspension → manual recovery | Та сама збережена ліцензія; General лишається активним, cross-list Focus DNR відновлюється до відповіді, два Options стають Pro |
+| Payment suspension → native alarm | Справжній `check_pro_expiry` alarm і HTTP mock; key, rules, profiles, settings збережено, інший профіль знову блокується |
+| Deferred DNR sync → native retry | Oversized fixture перевищує фактичний browser capacity; `syncPending=true` і Pro/key збережено; після виправлення fixture нативний `update_scheduled_rules` відновлює DNR |
 
 ## Межі набору
 
@@ -115,6 +118,11 @@ final extension state і traces як workflow artifact на 14 днів.
 означає помилку запуску середовища; проходження scenario body підтверджується
 лише реальним браузерним запуском. Retry вимкнено; падіння не приховується
 повтором. Версія розширення й production-код цим E2E-патчем не змінюються.
+
+Deferred-sync сценарій перевіряє реальний browser capacity через oversized
+fixture, а не всі можливі API rejection чи OS failure. Ані DNR methods, ані
+alarm delivery не замінено doubles. Наступний retry — фактичний native alarm,
+запланований у тимчасовому профілі, без виклику production listener вручну.
 
 ## Артефакти й діагностика
 

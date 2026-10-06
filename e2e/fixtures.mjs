@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { expectedVersion } from './target-version.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.resolve(process.env.BD_EXTENSION_PATH || path.join(directory, '..'));
@@ -109,12 +110,12 @@ class ExtensionHarness {
     }
   }
 
-  async seed({ pro = true, legacy = false, rules = [], usage = {}, active = 'general', pending = [], rawUsage = null } = {}) {
+  async seed({ pro = true, legacy = false, rules = [], usage = {}, active = 'general', pending = [], rawUsage = null, retainedKey = false, focus = null } = {}) {
     await this.worker.evaluate(async input => {
       const now = new Date();
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       await chrome.storage.sync.set({
-        credentials: { isPro: input.pro, licenseKey: input.pro ? input.key : null, expiryDate: null,
+        credentials: { isPro: input.pro, licenseKey: (input.pro || input.retainedKey) ? input.key : null, expiryDate: null,
           installationDate: input.legacy ? '2024-01-01T00:00:00.000Z' : '2026-08-01T00:00:00.000Z', isLegacyUser: input.legacy },
         settings: { mode: 'normal', enablePassword: false, debugMode: false, focusSessionSound: false }
       });
@@ -122,10 +123,10 @@ class ExtensionHarness {
         is_migrated_to_local: true, rules: input.rules, ruleLists: input.lists, activeRuleListId: input.active,
         pendingDailyUsageRemaps: input.pending,
         dailyRuleUsage: input.rawUsage ? { ...input.rawUsage, date } : { version: 2, date, usageSeconds: input.usage, lastSample: null },
-        focusSession: { focusActive: false, focusEndTime: 0, isHardcore: false, focusMode: 'blacklist' },
+        focusSession: input.focus || { focusActive: false, focusEndTime: 0, isHardcore: false, focusMode: 'blacklist' },
         telemetryConsent: { version: 1, enabled: false, decidedAt: now.getTime() }, lastCheck: now.getTime()
       });
-    }, { pro, legacy, rules, usage, active, pending, rawUsage, key: TEST_KEY, lists: LISTS });
+    }, { pro, legacy, rules, usage, active, pending, rawUsage, retainedKey, focus, key: TEST_KEY, lists: LISTS });
   }
 
   async openOptions() {
@@ -146,9 +147,9 @@ class ExtensionHarness {
 
   async state() {
     return this.worker.evaluate(async () => {
-      const local = await chrome.storage.local.get(['rules', 'ruleLists', 'activeRuleListId', 'dailyRuleUsage', 'pendingDailyUsageRemaps']);
-      const { credentials } = await chrome.storage.sync.get('credentials');
-      return { ...local, credentials, dnr: await chrome.declarativeNetRequest.getDynamicRules() };
+      const local = await chrome.storage.local.get(['rules', 'ruleLists', 'activeRuleListId', 'dailyRuleUsage', 'pendingDailyUsageRemaps', 'focusSession']);
+      const { credentials, settings } = await chrome.storage.sync.get(['credentials', 'settings']);
+      return { ...local, credentials, settings, dnr: await chrome.declarativeNetRequest.getDynamicRules() };
     });
   }
 
@@ -216,7 +217,6 @@ class ExtensionHarness {
 export const test = base.extend({
   extension: async ({}, use, testInfo) => {
     const manifest = JSON.parse(await readFile(path.join(extensionPath, 'manifest.json'), 'utf8'));
-    const expectedVersion = process.env.BD_EXPECTED_VERSION || '5.3.17';
     expect(manifest.version, 'The test target version must match BD_EXPECTED_VERSION').toBe(expectedVersion);
     expect(manifest.background.service_worker).toBe('scripts/service_worker.js');
     const profile = await mkdtemp(path.join(tmpdir(), 'bd-e2e-'));
