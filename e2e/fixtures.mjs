@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { test as base, expect } from 'playwright/test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import path from 'node:path';
@@ -59,8 +59,14 @@ export async function addUi(page, blockURL, { dailyMinutes = null } = {}) {
     await row.locator('.blocking-mode-select').selectOption('daily_limit');
     await row.locator('.daily-limit-minutes').fill(String(dailyMinutes));
   }
+  await expect(row.locator('td').nth(0).locator('input')).toHaveValue(blockURL);
+  if (dailyMinutes !== null) await expect(row.locator('.daily-limit-minutes')).toHaveValue(String(dailyMinutes));
   await row.locator('.save-btn').click();
   await expect(page.locator('#rules-container tr[data-rule-id]').filter({ hasText: blockURL })).toHaveCount(1);
+  await expect.poll(async () => (await page.evaluate(async () =>
+    (await chrome.storage.local.get('rules')).rules)).find(rule => rule.blockURL === blockURL)
+      ?.assignments?.find(item => item.listId === 'general')?.dailyLimit?.minutes ?? null)
+    .toBe(dailyMinutes);
 }
 
 class ExtensionHarness {
@@ -189,9 +195,33 @@ class ExtensionHarness {
 
   async writeLocal(values) { await this.worker.evaluate(values => chrome.storage.local.set(values), values); }
 
+  get popupUrl() { return `chrome-extension://${this.id}/index.html`; }
+
+  async newPage(url = 'about:blank') {
+    const page = await this.context.newPage();
+    page.on('pageerror', error => this.pageErrors.push(error.message));
+    await page.goto(url);
+    return page;
+  }
+
+  async openPopup() { return this.newPage(this.popupUrl); }
+
+  async deleteRule(page, id) {
+    await page.locator(`tr[data-rule-id="${id}"] .delete-btn`).click();
+  }
+
+  async importBackup(page, backup) {
+    const filename = path.join(this.profile, 'reader-backup.json');
+    await writeFile(filename, JSON.stringify(backup));
+    await page.locator('#importFileInput').setInputFiles(filename);
+  }
+
   async reconcile(page) {
-    const active = (await this.state()).activeRuleListId;
-    const response = await send(page, 'rules:activateList', { listId: active });
+    const state = await this.state();
+    const response = await send(page, 'rules:activateList', {
+      listId: state.activeRuleListId, expectedGeneration: state.rulesGeneration ?? null,
+      expectedListRevision: state.ruleListRevisions?.[state.activeRuleListId] ?? null
+    });
     expect(response.success, JSON.stringify(response)).toBe(true);
   }
 

@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.19**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.20**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -11,7 +11,7 @@
 
 ## Локальний запуск
 
-З кореня Chromium-репозиторію, після застосування змін 5.3.19:
+З кореня Chromium-репозиторію, після застосування змін 5.3.20:
 
 ```sh
 cd e2e
@@ -48,19 +48,19 @@ Loopback CDP доступний лише під час тесту; launch owner 
 і видаляє його профіль навіть після невдалого CDP-підключення.
 
 За замовчуванням extension path — батьківська папка `e2e`. Для перевірки
-**байтів store ZIP** розпакуйте `BlockDistraction-5.3.19-cws.zip` у звичайну папку та вкажіть її:
+**байтів store ZIP** розпакуйте `BlockDistraction-5.3.20-cws.zip` у звичайну папку та вкажіть її:
 
 PowerShell:
 
 ```powershell
-$env:BD_EXTENSION_PATH = 'E:\Work\BlockDistraction-5.3.19-cws'
+$env:BD_EXTENSION_PATH = 'E:\Work\BlockDistraction-5.3.20-cws'
 npm test
 ```
 
 Bash:
 
 ```sh
-BD_EXTENSION_PATH=/absolute/path/BlockDistraction-5.3.19-cws npm test
+BD_EXTENSION_PATH=/absolute/path/BlockDistraction-5.3.20-cws npm test
 ```
 
 Runner перевіряє manifest version. За замовчуванням `BD_EXPECTED_VERSION`
@@ -98,6 +98,9 @@ final extension state і traces як workflow artifact на 14 днів.
 | Тимчасова помилка verification | Mock HTTP 500; Pro зберігається, наступна paid action проходить |
 | Payment suspension → manual recovery | Та сама збережена ліцензія; General лишається активним, cross-list Focus DNR відновлюється до відповіді, два Options стають Pro |
 | Payment suspension → native alarm | Справжній `check_pro_expiry` alarm і HTTP mock; key, rules, profiles, settings збережено, інший профіль знову блокується |
+| Readers: delete/import × 3 | Три послідовні цикли без retry сценарію: два Options і Popup, cleanup usage/journal, DNR і blocked navigation |
+| Readers: concurrent/chained move | Два незалежні move, потім fresh move: прийняті й сторонній бюджети збережено; stale keys прибрано, усі три UI та DNR узгоджені |
+| Readers: expired-day restart | Учорашній usage + pending remap; чистий restart, сьогоднішній нульовий бюджет, UI/DNR та облік нового foreground segment |
 | Deferred DNR sync → native retry | Oversized fixture перевищує фактичний browser capacity; `syncPending=true` і Pro/key збережено; після виправлення fixture нативний `update_scheduled_rules` відновлює DNR |
 
 ## Межі набору
@@ -120,13 +123,18 @@ final extension state і traces як workflow artifact на 14 днів.
   фактичної доставки alarm, visibility чи lifetime worker.
 - H1 не вважається доведеним дефектом. Цей набір не містить artificial hook
   перед manager queue та не доводить відсутності всіх можливих гонок.
+- Popup у reader-сценаріях — справжня `index.html` сторінка розширення у
+  вкладці. Це не перевірка відкриття/закриття toolbar Popup браузером.
+- Expired-day fixture не замінює Date та не доводить фактичний перехід
+  через північ, зміну timezone чи DST.
 - Firefox Desktop, Firefox Android, Edge/Kiwi Android і автоматична idle
   suspension/restart одного worker цим набором не покриті.
 
 Після виконаного запуску оцінюйте JSON/HTML report. Падіння до scenario body
 означає помилку запуску середовища; проходження scenario body підтверджується
 лише реальним браузерним запуском. Retry вимкнено; падіння не приховується
-повтором. Версія розширення й production-код цим E2E-патчем не змінюються.
+повтором. У 5.3.20 виправлено відкладений autofocus у Options і застарілі
+refresh/callback вставлення рядків у Popup.
 
 Deferred-sync сценарій перевіряє реальний browser capacity через oversized
 fixture, а не всі можливі API rejection чи OS failure. Ані DNR methods, ані
