@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import { RulesClient } from '../rules/rulesClient.js';
 import { createRulesIntentHandler } from '../rules/rulesIntentRouter.js';
 
+test('stale intent: category client forwards the captured profile and revision without replacing them', async () => {
+  const previous = globalThis.chrome;
+  let message;
+  globalThis.chrome = { runtime: { sendMessage: (value, callback) => { message = value; callback({ success: true }); } } };
+  try {
+    await new RulesClient().toggleCategory('social', 'list-1', 'shown-generation', 'shown-list');
+    assert.deepEqual(message, { type: 'rules:toggleCategory', payload: { category: 'social', listId: 'list-1',
+      expectedGeneration: 'shown-generation', expectedListRevision: 'shown-list' } });
+  } finally { globalThis.chrome = previous; }
+});
+
 test('rules client preserves error code and all validation keys from the worker', async () => {
   const previousChrome = globalThis.chrome;
   let sentMessage = null;

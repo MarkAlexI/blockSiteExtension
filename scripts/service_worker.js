@@ -754,7 +754,7 @@ function normalizeFocusSessionRequest(message) {
   return { durationMinutes, focusMode, isHardcore };
 }
 
-async function activateFocusSession(request, transitionGeneration, scheduledEndTime = null) {
+async function activateFocusSession(request, transitionGeneration, scheduledEndTime = null, isScheduledWindowCurrent = null) {
   if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
   await reconcileStoredFocusSession('focus_start', {
@@ -810,7 +810,7 @@ async function activateFocusSession(request, transitionGeneration, scheduledEndT
   await dailyLimitTracker.sample('focus_start_before');
   if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
-  if (Date.now() >= endTime) return false;
+  if (Date.now() >= endTime || (isScheduledWindowCurrent && !isScheduledWindowCurrent())) return false;
   try {
     await chrome.storage.local.set({ focusSession: nextFocusSession });
     if (transitionGeneration !== focusSessionTransitionGeneration) return false;
@@ -878,10 +878,10 @@ const focusScheduleController = createFocusScheduleController({
   getAccess: getFocusAccess,
   getSession: getFocusSessionState,
   runExclusive: enqueueFocusSessionTransition,
-  startSession: (occurrence, transitionGeneration) => activateFocusSession({
+  startSession: (occurrence, transitionGeneration, isCurrentWindow) => activateFocusSession({
     durationMinutes: (occurrence.endTime - occurrence.startTime) / 60_000,
     isHardcore: false, focusMode: 'blacklist'
-  }, transitionGeneration, occurrence.endTime)
+  }, transitionGeneration, occurrence.endTime, isCurrentWindow)
 });
 
 async function reconcileScheduledFocus() {
@@ -2073,7 +2073,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const operation = message.type === 'focus_schedule_save'
       ? () => focusScheduleController.save(message.config, message.revision)
       : message.type === 'focus_schedule_skip'
-        ? () => focusScheduleController.skip(message.key)
+        ? () => focusScheduleController.skip(message.key, message.revision, message.startTime)
         : () => focusScheduleController.status();
     void operation().then(
       state => sendResponse({ success: true, ...state }),
