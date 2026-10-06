@@ -178,13 +178,14 @@ test('a hidden tab pauses accounting and foreground resume charges only visible 
   const options = await e.openOptions();
   await e.reconcile(options);
   const browsing = await e.context.newPage();
+  await browsing.goto(`${SITE}/visibility`);
   // Playwright forces every page to appear focused by default. Restore native
-  // focus/visibility before navigating; never replace document.visibilityState.
+  // focus/visibility after navigation: a new renderer reinstalls Playwright's
+  // default override. Never replace document.visibilityState.
   for (const page of [options, browsing]) {
     const session = await e.context.newCDPSession(page);
     await session.send('Emulation.setFocusEmulationEnabled', { enabled: false });
   }
-  await browsing.goto(`${SITE}/visibility`);
   await browsing.bringToFront();
   await expect.poll(async () => (await e.state()).dailyRuleUsage.lastSample?.assignmentKeys).toEqual(['21:general']);
   await options.bringToFront();

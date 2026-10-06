@@ -136,6 +136,14 @@ HTML; `results.json` — машинний report. Після restart збері�
 і після нього. Для іншого місця результатів доступні `BD_E2E_RESULTS`,
 `BD_E2E_HTML` і `BD_E2E_JSON`.
 
+У visibility-сценарії focus emulation вимикається через CDP після навігації,
+щоб зміна renderer не відновила стандартну емуляцію Playwright. Перевіряються
+справжні `document.visibilityState`, usage та DNR.
+Screenshots Options знімаються після завершення сценарію, з активацією
+кожної вкладки. Помилки збирання діагностики записуються в `diagnostic-errors`
+та annotation; вони не переривають спробу зберегти trace і не підміняють
+результат assertions сценарію. Browser close errors залишаються помилками.
+
 Офіційні інструкції:
 
 - https://playwright.dev/docs/chrome-extensions

@@ -198,17 +198,35 @@ class ExtensionHarness {
   async close() {
     this.releaseVerification?.();
     if (this.context) {
+      const diagnosticErrors = [];
+      const capture = async (label, action) => {
+        try { await action(); }
+        catch (error) { diagnosticErrors.push({ label, error: error.stack || String(error) }); }
+      };
       try {
-        if (this.worker) await this.testInfo.attach('final-extension-state', {
+        if (this.worker) await capture('final-extension-state', async () => this.testInfo.attach('final-extension-state', {
           body: JSON.stringify(await this.state(), null, 2), contentType: 'application/json'
-        });
+        }));
         for (let index = 0; index < this.options.length; index++) {
           const page = this.options[index];
-          if (!page.isClosed()) await this.testInfo.attach(`options-${index + 1}`, {
-            body: await page.screenshot({ fullPage: true }), contentType: 'image/png'
+          if (!page.isClosed()) await capture(`options-${index + 1}`, async () => {
+            // Foreground each page only after the scenario has finished. A
+            // background full-page capture can fail in headed Chromium.
+            await page.bringToFront();
+            await this.testInfo.attach(`options-${index + 1}`, {
+              body: await page.screenshot({ fullPage: true }), contentType: 'image/png'
+            });
           });
         }
-        await this.saveTrace('browser-trace');
+        // A screenshot failure must not prevent trace capture or replace the
+        // scenario's actual result. Preserve diagnostic failures separately.
+        await capture('browser-trace', () => this.saveTrace('browser-trace'));
+        if (diagnosticErrors.length) {
+          this.testInfo.annotations.push({ type: 'diagnostic', description: 'One or more teardown captures failed; see diagnostic-errors.' });
+          await this.testInfo.attach('diagnostic-errors', {
+            body: JSON.stringify(diagnosticErrors, null, 2), contentType: 'application/json'
+          });
+        }
       } finally { await this.context.close(); }
     }
   }
