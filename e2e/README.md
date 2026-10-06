@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.17**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.18**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -11,7 +11,7 @@
 
 ## Локальний запуск
 
-З кореня Chromium-репозиторію, після застосування змін 5.3.17:
+З кореня Chromium-репозиторію, після застосування змін 5.3.18:
 
 ```sh
 cd e2e
@@ -48,19 +48,19 @@ Loopback CDP доступний лише під час тесту; launch owner 
 і видаляє його профіль навіть після невдалого CDP-підключення.
 
 За замовчуванням extension path — батьківська папка `e2e`. Для перевірки
-**байтів store ZIP** розпакуйте `BlockDistraction-5.3.17-cws.zip` у звичайну папку та вкажіть її:
+**байтів store ZIP** розпакуйте `BlockDistraction-5.3.18-cws.zip` у звичайну папку та вкажіть її:
 
 PowerShell:
 
 ```powershell
-$env:BD_EXTENSION_PATH = 'E:\Work\BlockDistraction-5.3.17-cws'
+$env:BD_EXTENSION_PATH = 'E:\Work\BlockDistraction-5.3.18-cws'
 npm test
 ```
 
 Bash:
 
 ```sh
-BD_EXTENSION_PATH=/absolute/path/BlockDistraction-5.3.17-cws npm test
+BD_EXTENSION_PATH=/absolute/path/BlockDistraction-5.3.18-cws npm test
 ```
 
 Runner перевіряє manifest version. За замовчуванням `BD_EXPECTED_VERSION`
