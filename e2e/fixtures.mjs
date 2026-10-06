@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { test as base, expect } from 'playwright/test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
@@ -28,6 +29,17 @@ export const basicPayload = blockURL => ({
   assignment: { listId: 'general', blockingMode: 'always', schedule: null, dailyLimit: null }
 });
 export const paidPayload = blockURL => ({ ...basicPayload(blockURL), assignment: assignment() });
+
+async function freePort() {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
 
 export async function send(page, type, payload = {}) {
   return page.evaluate(async message => {
@@ -68,13 +80,35 @@ class ExtensionHarness {
 
   async launch() {
     // A unique test profile is mandatory. Never connect to a personal browser.
-    this.context = await chromium.launchPersistentContext(this.profile, {
+    const launchOptions = {
       channel: 'chromium',
       headless: this.testInfo.project.use.headless !== false,
       locale: 'en-US',
       viewport: { width: 1280, height: 900 },
       args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`]
-    });
+    };
+    if (this.testInfo.tags.includes('@native-visibility')) {
+      // A second CDP session cannot release the visibility capture handle
+      // held by Playwright's original session. Use the documented noDefaults
+      // connection on a fresh browser's default profile for this scenario.
+      const port = await freePort();
+      this.nativeOwner = await chromium.launch({
+        channel: launchOptions.channel,
+        headless: launchOptions.headless,
+        args: [...launchOptions.args, `--remote-debugging-port=${port}`,
+          '--remote-debugging-address=127.0.0.1', '--lang=en-US', '--window-size=1280,900']
+      });
+      this.nativeBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
+        noDefaults: true, isLocal: true
+      });
+      [this.context] = this.nativeBrowser.contexts();
+      expect(this.context, 'native default browser context').toBeTruthy();
+      // Keep a blank tab while closing the install/onboarding tabs below.
+      // Native headed Chrome can quit when its last browser window closes.
+      if (!this.context.pages().some(page => page.url() === 'about:blank')) await this.context.newPage();
+    } else {
+      this.context = await chromium.launchPersistentContext(this.profile, launchOptions);
+    }
     await this.context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     this.traceStarted = true;
     await this.context.route('**/*', async route => {
@@ -195,6 +229,16 @@ class ExtensionHarness {
     await this.launch();
   }
 
+  async closeBrowser() {
+    // The CDP context disconnects from its browser; the launch owner must also
+    // stop the process and remove its fresh profile, including launch failures.
+    try { await this.context?.close(); }
+    finally {
+      try { await this.nativeBrowser?.close(); }
+      finally { await this.nativeOwner?.close(); }
+    }
+  }
+
   async close() {
     this.releaseVerification?.();
     if (this.context) {
@@ -227,8 +271,8 @@ class ExtensionHarness {
             body: JSON.stringify(diagnosticErrors, null, 2), contentType: 'application/json'
           });
         }
-      } finally { await this.context.close(); }
-    }
+      } finally { await this.closeBrowser(); }
+    } else { await this.closeBrowser(); }
   }
 }
 

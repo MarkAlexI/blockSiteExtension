@@ -109,7 +109,7 @@ test('UI deletion and JSON import update both Options, usage and actual navigati
   await a.locator('tr[data-rule-id="21"] .delete-btn').click();
   await waitRules(e, 0);
   await waitDnr(e, []);
-  expect((await e.state()).dailyRuleUsage.usageSeconds).toEqual({});
+  await expect.poll(async () => (await e.state()).dailyRuleUsage.usageSeconds).toEqual({});
   await expect(rows(b)).toHaveCount(0);
   const { assignment: always, ...target } = basicPayload('imported.bd-e2e.test');
   const backup = { rules: [{ id: 99, ...target, isWhitelist: false, assignments: [always] }] };
@@ -120,7 +120,7 @@ test('UI deletion and JSON import update both Options, usage and actual navigati
   await waitDnr(e, [1]);
   await expect(rows(a)).toContainText('imported.bd-e2e.test');
   await expect(rows(b)).toContainText('imported.bd-e2e.test');
-  expect((await e.state()).dailyRuleUsage.usageSeconds).toEqual({});
+  await expect.poll(async () => (await e.state()).dailyRuleUsage.usageSeconds).toEqual({});
   await e.assertBlocked('http://imported.bd-e2e.test/page');
 });
 
@@ -173,19 +173,12 @@ test('real foreground accounting and deadline alarm exhaust a configured Daily L
   await e.assertBlocked(`${SITE}/after-budget`, 'daily_limit');
 });
 
-test('a hidden tab pauses accounting and foreground resume charges only visible time', async ({ extension: e }) => {
+test('a hidden tab pauses accounting and foreground resume charges only visible time', { tag: '@native-visibility' }, async ({ extension: e }) => {
   await e.seed({ rules: [dailyRule()], usage: { '21:general': 100 } });
   const options = await e.openOptions();
   await e.reconcile(options);
   const browsing = await e.context.newPage();
   await browsing.goto(`${SITE}/visibility`);
-  // Playwright forces every page to appear focused by default. Restore native
-  // focus/visibility after navigation: a new renderer reinstalls Playwright's
-  // default override. Never replace document.visibilityState.
-  for (const page of [options, browsing]) {
-    const session = await e.context.newCDPSession(page);
-    await session.send('Emulation.setFocusEmulationEnabled', { enabled: false });
-  }
   await browsing.bringToFront();
   await expect.poll(async () => (await e.state()).dailyRuleUsage.lastSample?.assignmentKeys).toEqual(['21:general']);
   await options.bringToFront();

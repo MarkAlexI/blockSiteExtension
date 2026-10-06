@@ -40,8 +40,12 @@ npm run report
 він видаляється. За замовчуванням набір використовує headed Chromium:
 visibility/accounting потребує справжнього перемикання вкладок. На Linux
 без desktop display запускайте через `xvfb-run -a npm test`, як у CI.
-У visibility-сценарії CDP вимикає стандартну focus emulation Playwright;
-`document.visibilityState` і події видимості лишаються нативними.
+Visibility-сценарій позначений `@native-visibility`. Для нього Playwright
+запускає окремий Chromium із новим тимчасовим профілем, а сторінками керує
+`connectOverCDP({ noDefaults: true })` у default context. Focus emulation
+тоді не вмикається; `document.visibilityState` і події лишаються нативними.
+Loopback CDP доступний лише під час тесту; launch owner закриває браузер
+і видаляє його профіль навіть після невдалого CDP-підключення.
 
 За замовчуванням extension path — батьківська папка `e2e`. Для перевірки
 **байтів store ZIP** розпакуйте `BlockDistraction-5.3.17-cws.zip` у звичайну папку та вкажіть її:
@@ -136,9 +140,12 @@ HTML; `results.json` — машинний report. Після restart збері�
 і після нього. Для іншого місця результатів доступні `BD_E2E_RESULTS`,
 `BD_E2E_HTML` і `BD_E2E_JSON`.
 
-У visibility-сценарії focus emulation вимикається через CDP після навігації,
-щоб зміна renderer не відновила стандартну емуляцію Playwright. Перевіряються
-справжні `document.visibilityState`, usage та DNR.
+У Chromium focus emulation утримує visibility capture handle окремого
+CDP-сеансу. `enabled:false` у другому сеансі не звільняє handle Playwright;
+тому visibility-сценарій використовує documented `noDefaults` від початку.
+Інші сценарії працюють через звичайний `launchPersistentContext`.
+Delete/import чекає usage cleanup окремим bounded poll: rules та DNR можуть
+оновитися до завершення post-commit cleanup. Умова порожнього usage збережена.
 Screenshots Options знімаються після завершення сценарію, з активацією
 кожної вкладки. Помилки збирання діагностики записуються в `diagnostic-errors`
 та annotation; вони не переривають спробу зберегти trace і не підміняють
@@ -149,3 +156,4 @@ Screenshots Options знімаються після завершення сце�
 - https://playwright.dev/docs/chrome-extensions
 - https://playwright.dev/docs/service-workers
 - https://playwright.dev/docs/ci-intro
+- https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp-option-no-defaults
