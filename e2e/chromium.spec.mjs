@@ -61,7 +61,7 @@ test('UI editing splits a shared Daily Limit target and preserves its exhausted 
   await expect(page.locator('h1')).toHaveText('BD E2E fixture');
 });
 
-test('two Options split and move assignments before legacy migration without granting a new budget', async ({ extension: e }) => {
+test('two Options reject a stale shared-rule edit, then refresh and preserve the legacy budget on split and move', async ({ extension: e }) => {
   const rule = dailyRule();
   rule.assignments.push(assignment('list-1'));
   await e.seed({ rules: [rule], active: 'list-2', rawUsage: {
@@ -69,13 +69,26 @@ test('two Options split and move assignments before legacy migration without gra
   } });
   const a = await e.openOptions();
   const b = await e.openOptions();
-  const responses = await Promise.all([
-    send(a, 'rules:update', { ruleId: 21, assignmentListId: 'list-1', blockURL: rule.blockURL,
-      redirectURL: 'http://safe.bd-e2e.test/study', assignment: assignment('list-1') }),
-    send(b, 'rules:update', { ruleId: 21, assignmentListId: 'general', blockURL: rule.blockURL,
-      redirectURL: '', assignment: assignment('list-2') })
-  ]);
-  expect(responses.every(response => response.success), JSON.stringify(responses)).toBe(true);
+  const original = await e.state();
+  const revision = state => ({ expectedGeneration: state.rulesGeneration ?? null,
+    expectedRevision: state.ruleRevisions?.[21] ?? null, expectedListRevisions: state.ruleListRevisions || {} });
+  const edits = [
+    { ruleId: 21, assignmentListId: 'list-1', blockURL: rule.blockURL,
+      redirectURL: 'http://safe.bd-e2e.test/study', assignment: assignment('list-1') },
+    { ruleId: 21, assignmentListId: 'general', blockURL: rule.blockURL,
+      redirectURL: '', assignment: assignment('list-2') }
+  ];
+  const responses = await Promise.all(edits.map((edit, index) =>
+    send([a, b][index], 'rules:update', { ...edit, ...revision(original) })));
+  expect(responses.filter(response => response.success)).toHaveLength(1);
+  const stale = responses.findIndex(response => !response.success);
+  expect(responses[stale].error.code).toBe('rules_state_changed');
+  const committed = await e.state();
+  expect(Object.values(committed.dailyRuleUsage.usageSeconds)).toEqual([840, 840]);
+  // Read the committed revision, as a refreshed Options form does. An old form
+  // must never overwrite the successful edit or reset either spent budget.
+  const retry = await send([a, b][stale], 'rules:update', { ...edits[stale], ...revision(committed) });
+  expect(retry.success, JSON.stringify(retry)).toBe(true);
   const state = await e.state();
   expect(state.rules).toHaveLength(2);
   const study = state.rules.find(item => item.assignments.some(a => a.listId === 'list-1'));
@@ -165,6 +178,12 @@ test('a hidden tab pauses accounting and foreground resume charges only visible 
   const options = await e.openOptions();
   await e.reconcile(options);
   const browsing = await e.context.newPage();
+  // Playwright forces every page to appear focused by default. Restore native
+  // focus/visibility before navigating; never replace document.visibilityState.
+  for (const page of [options, browsing]) {
+    const session = await e.context.newCDPSession(page);
+    await session.send('Emulation.setFocusEmulationEnabled', { enabled: false });
+  }
   await browsing.goto(`${SITE}/visibility`);
   await browsing.bringToFront();
   await expect.poll(async () => (await e.state()).dailyRuleUsage.lastSample?.assignmentKeys).toEqual(['21:general']);

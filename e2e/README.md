@@ -24,6 +24,7 @@ Linux CI із відсутніми browser dependencies:
 
 ```sh
 npx playwright install --with-deps chromium
+xvfb-run -a npm test
 ```
 
 Видимий браузер і HTML-звіт:
@@ -36,7 +37,11 @@ npm run report
 Використовується Chromium, який встановлює Playwright, та окремий тимчасовий
 профіль на кожен тест. Особистий браузер і профіль користувача не підключаються.
 У restart-сценаріях використовується той самий тестовий профіль, після тесту
-він видаляється. Перевірка headless та headed — окремі запуски.
+він видаляється. За замовчуванням набір використовує headed Chromium:
+visibility/accounting потребує справжнього перемикання вкладок. На Linux
+без desktop display запускайте через `xvfb-run -a npm test`, як у CI.
+У visibility-сценарії CDP вимикає стандартну focus emulation Playwright;
+`document.visibilityState` і події видимості лишаються нативними.
 
 За замовчуванням extension path — батьківська папка `e2e`. Для перевірки
 **байтів store ZIP** розпакуйте `BlockDistraction-5.3.17-cws.zip` у звичайну папку та вкажіть її:
@@ -76,7 +81,7 @@ final extension state і traces як workflow artifact на 14 днів.
 | --- | --- |
 | Два Options додають правила | Native runtime callers у двох реальних сторінках; обидва UI, різні ID, actual DNR та blocked navigation |
 | UI split спільного Daily Limit | Edit/Save; збереження 840 секунд, limit-reached UI, новий ID і кінцевий redirect |
-| Конкурентні split/move до v1 migration | Два native runtime callers; бюджети, rules, journal, actual DNR і blocked navigation |
+| Конкурентні split/move до v1 migration | Два callers з однією revision: одна дія проходить, інша отримує `rules_state_changed`; після читання актуальної revision retry зберігає обидва бюджети, DNR і blocked navigation |
 | UI delete/import | Delete та справжній file input change із JSON; синхронізація двох UI і блокування імпортованого URL |
 | Journal після browser restart | Durable fixture перед recovery; clean close/relaunch того самого профілю, перенесений usage та actual navigation |
 | Mixed v1 migration після restart | 840 legacy + 10 scoped → 840; більший scoped 900 збережено |

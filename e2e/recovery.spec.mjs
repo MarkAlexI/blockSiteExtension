@@ -53,7 +53,10 @@ test('verified Pro survives a real browser capacity limit and the next native al
   const general = rule(901, 'general', 'general.bd-e2e.test');
   const overflow = Array.from({ length: maximum }, (_, i) => rule(10000 + i, 'list-1', `quota${i}.bd-e2e.test`));
   await e.seed({ pro: false, retainedKey: true, rules: [general, ...overflow], focus: focus() });
-  await e.reconcile(a); expect(ids(await e.state())).toEqual([901]);
+  // Switching lists is a paid intent, including reselecting General. A Free
+  // fixture is reconciled by the production scheduled-rules alarm instead.
+  await e.worker.evaluate(() => chrome.alarms.create('update_scheduled_rules', { when: Date.now() + 1000 }));
+  await expect.poll(async () => ids(await e.state()), { timeout: 75_000 }).toEqual([901]);
   const before = await e.state();
   const response = await send(a, 'force_sync');
   expect(response.success).toBe(true); expect(response.isPro).toBe(true); expect(response.syncPending).toBe(true);

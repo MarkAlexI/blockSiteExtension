@@ -5,6 +5,9 @@ export default defineConfig({
   testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs'],
   fullyParallel: false,
   workers: 1,
+  // Visibility/accounting scenarios require a browser with a real tab strip.
+  // Linux without a desktop display uses xvfb-run (also in the CI workflow).
+  use: { headless: false },
   retries: 0,
   timeout: 120_000,
   expect: { timeout: 15_000 },

@@ -147,7 +147,7 @@ class ExtensionHarness {
 
   async state() {
     return this.worker.evaluate(async () => {
-      const local = await chrome.storage.local.get(['rules', 'ruleLists', 'activeRuleListId', 'dailyRuleUsage', 'pendingDailyUsageRemaps', 'focusSession']);
+      const local = await chrome.storage.local.get(['rules', 'ruleLists', 'activeRuleListId', 'dailyRuleUsage', 'pendingDailyUsageRemaps', 'focusSession', 'rulesGeneration', 'ruleRevisions', 'ruleListRevisions']);
       const { credentials, settings } = await chrome.storage.sync.get(['credentials', 'settings']);
       return { ...local, credentials, settings, dnr: await chrome.declarativeNetRequest.getDynamicRules() };
     });
