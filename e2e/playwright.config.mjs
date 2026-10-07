@@ -2,7 +2,7 @@ import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs', 'readers.spec.mjs'],
+  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs', 'readers.spec.mjs', 'stale.spec.mjs'],
   fullyParallel: false,
   workers: 1,
   // Visibility/accounting scenarios require a browser with a real tab strip.
