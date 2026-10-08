@@ -105,8 +105,7 @@ final extension state і traces як workflow artifact на 14 днів.
 
 ## Календарний smoke (32–34)
 
-`calendar.spec.mjs` додає три сценарії до повного CI-набору (34 Chromium
-тести загалом). Окремий запуск у Linux:
+`calendar.spec.mjs` додає три сценарії до повного CI-набору. Окремий запуск у Linux:
 
 ```sh
 xvfb-run -a npm test -- calendar.spec.mjs
@@ -156,6 +155,41 @@ process TZ при clean restart, без Date override чи ручного вик
 Жива північ, timezone change без restart, короткий suspend активного segment,
 automatic idle unload і Android suspend/resume залишаються окремими кроками.
 
+## Scheduled Focus expiry smoke (37–38)
+
+Ці два persistent сценарії затримують **повернення** одного справжнього API
+в background після його виконання. 37 утримує session read до durable claim;
+38 утримує завершений claim write. Нативний Scheduled Focus alarm доставляється
+у хвилинному occurrence; Date/Date.now/Intl та результати API не підміняються.
+Тест чекає фактичного endTime, звільняє delivery і ставить незмінений save у
+production transition queue як barrier завершення reconcile.
+
+| ID | Обов’язкова перевірка |
+| --- | --- |
+| 37 | Після expiry немає handled key, жодної transient Focus activation чи Focus DNR; наступний occurrence має точний native alarm. |
+| 38 | Claim уже збережений перед hold; після expiry немає transient Focus/DNR; той самий claim і schedule переживають restart профілю без reseed. |
+
+Спостерігач записує storage write/commit, справжні storage.onChanged, native
+DNR update arguments і rules після commit, доставлені alarms та час gate.
+Позитивний контроль через ручний Focus start/stop мусить показати activation
+обом спостерігачам до очищення history для основного сценарію. Перевіряється
+вся history, а не лише фінальний eventually. Browser API errors лишаються
+помилками; held delivery та observers відновлюються у finally.
+
+Background heartbeat читає справжній storage під час контрольованого wait.
+Це перевірка expiry всередині живого background, а не automatic idle unload,
+OS suspend/resume, зміна timezone під час wait або Android. Restart чистий;
+history стосується індукованого wait до закриття браузера. Після restart
+перевіряються durable claim, schedule, Focus state, DNR, alarm і navigation.
+Окремий timeout 240 секунд охоплює native запуск, до 75 секунд до start,
+хвилинний occurrence та restart; retries вимкнено.
+
+Окремий Linux запуск із каталогу `e2e`:
+
+```sh
+xvfb-run -a npm test -- scheduled-expiry.spec.mjs
+```
+
 ## Межі набору
 
 - Chrome APIs не замінюються doubles; завантажено справжній extension worker,
@@ -171,7 +205,8 @@ automatic idle unload і Android suspend/resume залишаються окре�
 - Verification endpoint перехоплюється й повертає контрольовані відповіді;
   використовуються лише dummy credentials. Paddle, backend, реальна ліцензія,
   мережеві властивості production endpoint і фактичні покупки не тестуються.
-- Clock, alarm emit та WebExtension methods не підміняються. Для deadline
+- Clock, alarm emit та результати WebExtension APIs не підміняються.
+  37–38 затримують доставку одного фактично завершеного API-виклику. Для deadline
   допускається до 75 секунд реального часу. Тест може виявити відмінності
   фактичної доставки alarm, visibility чи lifetime worker.
 - H1 не вважається доведеним дефектом. Цей набір не містить artificial hook
