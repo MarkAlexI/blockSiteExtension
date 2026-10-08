@@ -89,13 +89,16 @@ class ExtensionHarness {
     this.traceStarted = false;
   }
 
-  async launch() {
+  async launch({ timezone = this.timezone } = {}) {
+    this.timezone = timezone;
     // A unique test profile is mandatory. Never connect to a personal browser.
     const launchOptions = {
       channel: 'chromium',
       executablePath: process.env.BD_CHROMIUM_BINARY || undefined,
       headless: this.testInfo.project.use.headless !== false,
       locale: 'en-US',
+      // Process TZ reaches pages and the MV3 worker without a Date/API shim.
+      env: timezone ? { ...process.env, TZ: timezone } : undefined,
       viewport: { width: 1280, height: 900 },
       args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`,
         ...(process.env.BD_E2E_DISABLE_GPU === '1' ? ['--disable-gpu'] : [])]
@@ -108,7 +111,7 @@ class ExtensionHarness {
       this.nativeOwner = await launchNativeChromium({
         executablePath: launchOptions.executablePath || chromium.executablePath(),
         profile: this.profile, port, headless: launchOptions.headless,
-        args: launchOptions.args
+        args: launchOptions.args, env: launchOptions.env
       });
       this.nativeBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
         noDefaults: true, isLocal: true
@@ -261,12 +264,21 @@ class ExtensionHarness {
     await this.testInfo.attach(label, { path: filename, contentType: 'application/zip' });
   }
 
-  async restart() {
+  async backgroundClock() {
+    return this.worker.evaluate(() => {
+      const now = Date.now(); const local = new Date(now);
+      return { now, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offset: local.getTimezoneOffset(), date: `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`,
+        nativeDate: Date.toString().includes('[native code]') && Date.now.toString().includes('[native code]') };
+    });
+  }
+
+  async restart({ timezone = this.timezone } = {}) {
     await this.saveTrace('before-restart-trace');
     await this.closeBrowser();
     this.context = this.nativeBrowser = this.nativeOwner = null;
     this.options = [];
-    await this.launch();
+    await this.launch({ timezone });
   }
 
   async closeBrowser() {

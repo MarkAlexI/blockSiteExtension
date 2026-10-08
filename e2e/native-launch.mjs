@@ -11,7 +11,9 @@ export function nativeChromiumArgs({ profile, port, headless, args = [] }) {
 // Launch outside Playwright so its default CDP client cannot emulate page focus.
 // Keep the fixture's explicit user-data-dir across restart.
 export async function launchNativeChromium(config) {
-  const child = spawn(config.executablePath, nativeChromiumArgs(config), { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = spawn(config.executablePath, nativeChromiumArgs(config), {
+    stdio: ['ignore', 'ignore', 'pipe'], env: config.env
+  });
   let failure = null, stderr = '';
   child.on('error', error => { failure = error; });
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16000); });

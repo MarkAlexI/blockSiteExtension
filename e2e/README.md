@@ -103,6 +103,31 @@ final extension state і traces як workflow artifact на 14 днів.
 | Readers: expired-day restart | Учорашній usage + pending remap; чистий restart, сьогоднішній нульовий бюджет, UI/DNR та облік нового foreground segment |
 | Deferred DNR sync → native retry | Oversized fixture перевищує фактичний browser capacity; `syncPending=true` і Pro/key збережено; після виправлення fixture нативний `update_scheduled_rules` відновлює DNR |
 
+## Календарний smoke (32–34)
+
+`calendar.spec.mjs` додає три сценарії до повного CI-набору (32 Chromium
+тести загалом). Окремий запуск у Linux:
+
+```sh
+xvfb-run -a npm test -- calendar.spec.mjs
+```
+
+32 змінює процесний `TZ` з UTC на UTC+1 через чистий restart того самого
+профілю: key та revision незмінні, absolute start інший. Старий Skip має
+повернути `schedule_changed`, storage не змінюється, alarm переозброєно.
+33 змінює UTC−12 на UTC+14: локальний occurrence key також змінюється.
+Обидва сценарії перевіряють свіжий Skip через UI і його збереження після
+наступного restart без повторного seed. Date, Date.now та WebExtension API
+не підміняються; timezone і offset звіряються в Options та MV3 worker.
+
+34 імпортує production `focusSchedule.js` у реальний браузер із процесним
+`TZ=America/New_York`. Передає фіксовані instants як аргументи календарного
+модуля: gap 02:30 пропускається, fold 01:30 має один key/start, handled і
+skipped key ведуть на наступний тиждень. Це native Date/Intl integration,
+а не очікування живого переходу DST чи перевірка доставки alarm під час DST.
+Покриття процесного TZ наразі призначене для Linux CI; інші OS потребують
+окремого підтвердження. Невідповідність timezone в будь-якому realm є падінням.
+
 ## Межі набору
 
 - Chrome APIs не замінюються doubles; завантажено справжній extension worker,
@@ -125,8 +150,9 @@ final extension state і traces як workflow artifact на 14 днів.
   перед manager queue та не доводить відсутності всіх можливих гонок.
 - Popup у reader-сценаріях — справжня `index.html` сторінка розширення у
   вкладці. Це не перевірка відкриття/закриття toolbar Popup браузером.
-- Expired-day fixture не замінює Date та не доводить фактичний перехід
-  через північ, зміну timezone чи DST.
+- Expired-day fixture не доводить живу північ чи timezone-зміну з активним
+  usage/pending remap. 32–34 перевіряють окремі календарні гарантії Scheduled
+  Focus; зміна системного timezone всередині pending API wait не покрита.
 - Firefox Desktop, Firefox Android, Edge/Kiwi Android і автоматична idle
   suspension/restart одного worker цим набором не покриті.
 
