@@ -9,6 +9,11 @@
 `results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
 Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
+База `ab4c1c65223c1fd9523c1967f15b0fe91dbecd6b`: [Chromium E2E run
+37823365955](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37823365955),
+перша спроба — **36 passed**. Новий idle-сценарій нижче додає 37-й тест;
+цей попередній зелений результат не є його виконанням.
+
 ## Локальний запуск
 
 З кореня Chromium-репозиторію, після застосування змін 5.3.20:
@@ -94,6 +99,58 @@ Workflow збирає CWS ZIP із tracked HEAD чинним `package:cws`, ро
 та запускає тести на цьому пакеті. Зберігає HTML/JSON-звіти, screenshots,
 final extension state і traces як workflow artifact на 14 днів.
 Завантаження в CWS/Edge/AMO та deployment не виконує.
+
+## Автоматичний idle unload → native alarm wake
+
+`idle-native.spec.mjs` додає один Chromium-сценарій. Окремий запуск:
+
+```sh
+cd e2e
+xvfb-run -a npm test -- idle-native.spec.mjs
+```
+
+У справжньому Popup reader у вкладці запускається хвилинна Focus Session.
+Час початку обирається перед штатним хвилинним tick, щоб після нього лишилося
+понад 45 секунд до completion alarm, а наступний minute alarm був пізніше.
+Fresh-install license alarm спершу виконується з dummy-key HTTP mock.
+Жоден production alarm не очищається та не переноситься.
+
+Перед idle закриваються extension UI й усі сторінки, крім `about:blank`.
+Зберігається trace, після чого **весь Playwright CDP transport від'єднується**;
+native launch owner, PID, WS endpoint і профіль лишаються тими самими.
+У detached проміжку runner лише читає `/json/list`: не виконує JS, extension
+API, heartbeat, повідомлень, worker stop/start або browser restart.
+Worker має зникнути після native idle window та бути відсутнім принаймні
+секунду; нова активність має з'явитися на completion alarm, до конкуруючого
+minute alarm. Немає сценарійних retries або fallback на forced stop.
+
+Після спостережуваного wake runner під'єднується знову. JS-маркер має
+зникнути, а native `storage.session` sentinel — зберегтися. Chromium може
+повторно використати target ID: його зміна не є assertion. До відкриття UI
+перевіряється **кінцеве** завершення Focus production alarm handler, зняття
+cross-list DNR, збереження 840 секунд Daily Limit і порожнього journal.
+Completion alarm має зникнути, хвилинний periodic alarm — залишитися.
+Потім Options/Popup reader показують завершену сесію, spent rule блокує
+навігацію з `daily_limit`, а неактивний профіль знову дозволений.
+
+`native-idle-wake` містить PID, alarms, targets і часову історію HTTP samples;
+trace охоплює ділянки до від'єднання та після під'єднання. Detached проміжок
+навмисно без debugger trace. Окремий deadline 210 секунд враховує справжні
+maintenance/Focus alarms; timeout та retries інших сценаріїв не змінені.
+Провал до unload або пізній wake спершу аналізуйте за цією історією: це не
+автоматичний доказ runtime-регресії.
+
+Це eventual completion, не доказ відсутності короткого stale DNR між async
+операціями. Сценарій не перевіряє crash між writes, OS suspend, Firefox event
+page/Android, toolbar Popup чи байти встановленого магазинного пакета.
+HTTP protocol-model тести з контрольованим clock не є native E2E.
+
+Підстави для harness: [Chrome lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle),
+[Playwright connected Browser.close](https://playwright.dev/docs/api/class-browser#browser-close),
+[Chromium live/stopped worker hosts](https://github.com/chromium/chromium/blob/main/content/browser/devtools/service_worker_devtools_manager.cc)
+та [DevTools attachment](https://github.com/chromium/chromium/blob/main/content/browser/devtools/service_worker_devtools_agent_host.cc).
+Історичне уточнення wOxxOm про Chrome 110 та idle timer:
+[Chromium Extensions, 7 січня 2023](https://groups.google.com/a/chromium.org/g/chromium-extensions/c/_RxghHKGQ8s).
 
 ## Що перевіряється
 

@@ -3,7 +3,8 @@ import { test as base, expect } from 'playwright/test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
-import { launchNativeChromium, prepareNativePages } from './native-launch.mjs';
+import { launchNativeChromium, prepareNativePages, targetsAt } from './native-launch.mjs';
+import { observeNativeIdleWake } from './native-idle.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -140,6 +141,30 @@ class ExtensionHarness {
     } else {
       this.context = await chromium.launchPersistentContext(this.profile, launchOptions);
     }
+    await this.configureContext();
+    const { worker, identity } = await extensionWorker(this.context, this.manifest);
+    this.worker = worker;
+    this.id = identity.id;
+    await this.testInfo.attach('extension-worker', { contentType: 'application/json',
+      body: JSON.stringify({ url: worker.url(), ...identity,
+        observedWorkers: this.context.serviceWorkers().map(item => item.url()) }) });
+    await expect.poll(async () => this.worker.evaluate(async () =>
+      (await chrome.storage.local.get('is_migrated_to_local')).is_migrated_to_local), { timeout: 20_000 }).toBe(true);
+    if (!this.installed && !this.nativeOwner) {
+      // This real onInstalled page is created after the full initialization.
+      // Seeding at the earlier migration marker can race startup usage pruning.
+      const installUrl = `chrome-extension://${this.id}/options/options.html`;
+      await expect.poll(() => this.context.pages().some(page => page.url() === installUrl), {
+        timeout: 20_000, message: 'fresh install initialization completed before fixture seed'
+      }).toBe(true);
+    }
+    for (const page of this.context.pages()) {
+      if (page.url() !== 'about:blank') await page.close();
+    }
+    this.installed = true;
+  }
+
+  async configureContext() {
     await this.context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     this.traceStarted = true;
     await this.context.route('**/*', async route => {
@@ -165,26 +190,75 @@ class ExtensionHarness {
       // No production requests, purchases or real licenses are involved.
       return route.abort();
     });
-    const { worker, identity } = await extensionWorker(this.context, this.manifest);
-    this.worker = worker;
-    this.id = identity.id;
-    await this.testInfo.attach('extension-worker', { contentType: 'application/json',
-      body: JSON.stringify({ url: worker.url(), ...identity,
-        observedWorkers: this.context.serviceWorkers().map(item => item.url()) }) });
-    await expect.poll(async () => this.worker.evaluate(async () =>
-      (await chrome.storage.local.get('is_migrated_to_local')).is_migrated_to_local), { timeout: 20_000 }).toBe(true);
-    if (!this.installed && !this.nativeOwner) {
-      // This real onInstalled page is created after the full initialization.
-      // Seeding at the earlier migration marker can race startup usage pruning.
-      const installUrl = `chrome-extension://${this.id}/options/options.html`;
-      await expect.poll(() => this.context.pages().some(page => page.url() === installUrl), {
-        timeout: 20_000, message: 'fresh install initialization completed before fixture seed'
-      }).toBe(true);
-    }
+  }
+
+  async idleUntilAlarm({ alarmName = 'update_scheduled_rules' } = {}) {
+    expect(this.nativeOwner, 'idle observation requires an independently owned native browser').toBeTruthy();
+    await this.saveTrace('before-idle-trace');
     for (const page of this.context.pages()) {
       if (page.url() !== 'about:blank') await page.close();
     }
-    this.installed = true;
+    const before = await this.nativeOwner.diagnostics();
+    const workerUrl = this.worker.url();
+    expect(before.targets.filter(target => target.type === 'service_worker' && target.url === workerUrl)).toHaveLength(1);
+    const probe = await this.worker.evaluate(async () => {
+      const token = crypto.randomUUID();
+      globalThis.__bdIdleLifetime = token;
+      await chrome.storage.session.set({ __bdIdleLifetime: token });
+      const alarms = await chrome.alarms.getAll();
+      return { token, lastApiAt: Date.now(), alarms };
+    });
+    const minuteAlarm = probe.alarms.find(item => item.name === 'update_scheduled_rules');
+    expect(minuteAlarm?.periodInMinutes).toBe(1);
+    const alarm = probe.alarms.find(item => item.name === alarmName);
+    expect(alarm, 'expected native wake alarm').toBeTruthy();
+    expect(alarm.scheduledTime - probe.lastApiAt, 'a full idle window before the native wake alarm').toBeGreaterThan(45_000);
+    expect(probe.alarms.filter(item => item.scheduledTime <= alarm.scheduledTime).map(item => item.name)).toEqual([alarmName]);
+    const observation = { pid: before.pid, profile: this.profile, workerUrl,
+      initialTargets: before.targets, probe, samples: [] };
+    try {
+      // connectOverCDP Browser.close closes its transport, not this native
+      // launch owner. Do not close the persistent context or browser process.
+      await this.nativeBrowser.close();
+      this.context = this.nativeBrowser = this.worker = null;
+      this.options = [];
+      observation.detachedAt = Date.now();
+      observation.cycle = await observeNativeIdleWake(this.nativeOwner.endpoint, workerUrl, {
+        wakeAt: alarm.scheduledTime, lastApiAt: probe.lastApiAt,
+        wakeBefore: alarmName === 'end_focus_session' ? minuteAlarm.scheduledTime : Infinity,
+        onSample: sample => observation.samples.push(sample)
+      });
+      observation.after = await this.nativeOwner.diagnostics();
+      expect(observation.after.pid).toBe(before.pid);
+      expect(observation.after.exitCode).toBeNull();
+      expect(observation.after.signalCode).toBeNull();
+      expect(observation.after.webSocketDebuggerUrl).toBe(before.webSocketDebuggerUrl);
+      // Reconnect only after HTTP discovery has observed both unload and wake.
+      this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
+        noDefaults: true, isLocal: true
+      });
+      [this.context] = this.nativeBrowser.contexts();
+      expect(this.context).toBeTruthy();
+      await this.configureContext();
+      const { worker, identity } = await extensionWorker(this.context, this.manifest);
+      expect(identity.id).toBe(this.id);
+      this.worker = worker;
+      const restored = await worker.evaluate(async () => ({
+        global: globalThis.__bdIdleLifetime ?? null,
+        session: (await chrome.storage.session.get('__bdIdleLifetime')).__bdIdleLifetime ?? null
+      }));
+      expect(restored).toEqual({ global: null, session: probe.token });
+      observation.restored = restored;
+      return { ...observation.cycle, alarm };
+    } catch (error) {
+      observation.error = error.stack || String(error);
+      observation.after ??= await this.nativeOwner.diagnostics();
+      throw error;
+    } finally {
+      await this.testInfo.attach('native-idle-wake', {
+        contentType: 'application/json', body: JSON.stringify(observation)
+      });
+    }
   }
 
   async seed({ pro = true, legacy = false, rules = [], usage = {}, active = 'general', pending = [], rawUsage = null, retainedKey = false, focus = null } = {}) {

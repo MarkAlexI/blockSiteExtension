@@ -4,7 +4,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const isInstallPage = target => target.type === 'page' &&
   /^chrome-extension:\/\/[^/]+\/options\/options\.html(?:[?#]|$)/.test(target.url);
 
-async function targetsAt(endpoint) {
+export async function targetsAt(endpoint) {
   const response = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(1000) });
   if (!response.ok) throw new Error(`Native Chromium target discovery: HTTP ${response.status}`);
   const targets = await response.json();
