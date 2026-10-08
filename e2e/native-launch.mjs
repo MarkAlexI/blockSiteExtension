@@ -3,8 +3,9 @@ import { spawn } from 'node:child_process';
 export function nativeChromiumArgs({ profile, port, headless, args = [] }) {
   return [...args, `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`,
     '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check',
+    '--disable-component-extensions-with-background-pages', '--disable-default-apps',
     '--no-sandbox', '--disable-dev-shm-usage', '--lang=en-US', '--window-size=1280,900',
-    ...(headless ? ['--headless=new'] : [])];
+    ...(headless ? ['--headless=new'] : []), 'about:blank'];
 }
 
 // Launch outside Playwright so its default CDP client cannot emulate page focus.

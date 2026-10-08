@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { launchNativeChromium } from './native-launch.mjs';
+import { extensionWorker } from './extension-worker.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
@@ -102,7 +103,7 @@ class ExtensionHarness {
     if (this.testInfo.tags.includes('@native-visibility')) {
       // A second CDP session cannot release the visibility capture handle
       // held by Playwright's original session. Use the documented noDefaults
-      // connection on a fresh browser's default profile for this scenario.
+      // connection on this fixture's isolated persistent profile.
       const port = await freePort();
       this.nativeOwner = await launchNativeChromium({
         executablePath: launchOptions.executablePath || chromium.executablePath(),
@@ -145,9 +146,12 @@ class ExtensionHarness {
       // No production requests, purchases or real licenses are involved.
       return route.abort();
     });
-    this.worker = this.context.serviceWorkers()[0] ||
-      await this.context.waitForEvent('serviceworker', { timeout: 20_000 });
-    this.id = new URL(this.worker.url()).host;
+    const { worker, identity } = await extensionWorker(this.context, this.manifest);
+    this.worker = worker;
+    this.id = identity.id;
+    await this.testInfo.attach('extension-worker', { contentType: 'application/json',
+      body: JSON.stringify({ url: worker.url(), ...identity,
+        observedWorkers: this.context.serviceWorkers().map(item => item.url()) }) });
     await expect.poll(async () => this.worker.evaluate(async () =>
       (await chrome.storage.local.get('is_migrated_to_local')).is_migrated_to_local), { timeout: 20_000 }).toBe(true);
     for (const page of this.context.pages()) {

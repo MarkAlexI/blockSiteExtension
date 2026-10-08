@@ -11,6 +11,9 @@ test('native visibility launch and restart use the same explicit isolated profil
   assert.equal(restarted.find(arg => arg.startsWith('--user-data-dir=')), first.find(arg => arg.startsWith('--user-data-dir=')));
   assert.ok(first.includes('--remote-debugging-port=12345'));
   assert.ok(restarted.includes('--remote-debugging-port=12346'));
+  assert.ok(first.includes('--disable-component-extensions-with-background-pages'));
+  assert.ok(first.includes('--disable-default-apps'));
+  assert.equal(first.at(-1), 'about:blank');
   assert.equal(first.includes('--headless=new'), false);
   assert.equal(nativeChromiumArgs({ ...config, headless: true }).includes('--headless=new'), true);
 });
