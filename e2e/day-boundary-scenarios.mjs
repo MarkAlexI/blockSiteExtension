@@ -115,7 +115,7 @@ async function foregroundSegment(e, options, listId, label) {
 
 async function stage(e, from, fromOffset, activeSample) {
   const profile = e.profile;
-  await e.restart({ timezone: from });
+  assert.equal(e.timezone, from, 'native fixture starts in the selected timezone before seeding');
   await e.seed({ rules: rules('list-1'), active: 'list-1',
     usage: { '35:list-1': 120, '36:list-1': 840 } });
   const page = await e.openOptions();
@@ -165,6 +165,7 @@ function dateLineZones(now) {
 export const dayBoundaryScenarios = [
   { id: '35', persistent: true,
     title: 'day-boundary smoke: same-day timezone restart consumes journal once and preserves foreground usage',
+    initialSetup: () => ({ timezone: 'Etc/UTC' }),
     async run(e) {
       const initial = await stage(e, 'Etc/UTC', 0, false);
       const hour = new Date(initial.beforeClock.now).getUTCHours();
@@ -189,8 +190,11 @@ export const dayBoundaryScenarios = [
     } },
   { id: '36', persistent: true,
     title: 'day-boundary smoke: date-line ABA clears active-sample journal and never resurrects a previous budget',
-    async run(e) {
-      const zones = dateLineZones((await e.backgroundClock()).now);
+    initialSetup() {
+      const zones = dateLineZones(Date.now());
+      return { timezone: zones.from, zones };
+    },
+    async run(e, { zones }) {
       const initial = await stage(e, zones.from, zones.fromOffset, true);
       await e.restart({ timezone: zones.to });
       const page = await e.openOptions();

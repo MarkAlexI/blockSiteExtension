@@ -428,14 +428,15 @@ class ExtensionHarness {
 }
 
 export const test = base.extend({
-  extension: async ({}, use, testInfo) => {
+  initialTimezone: [undefined, { option: true }],
+  extension: async ({ initialTimezone }, use, testInfo) => {
     const manifest = JSON.parse(await readFile(path.join(extensionPath, 'manifest.json'), 'utf8'));
     expect(manifest.version, 'The test target version must match BD_EXPECTED_VERSION').toBe(expectedVersion);
     expect(manifest.background.service_worker).toBe('scripts/service_worker.js');
     const profile = await mkdtemp(path.join(tmpdir(), 'bd-e2e-'));
     const harness = new ExtensionHarness(profile, testInfo, manifest);
     try {
-      try { await harness.launch(); }
+      try { await harness.launch({ timezone: initialTimezone }); }
       catch (error) {
         testInfo.annotations.push({ type: 'environment', description: 'Browser launch failed before the scenario body started.' });
         throw error;

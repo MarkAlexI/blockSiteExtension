@@ -770,9 +770,9 @@ test('a delayed visibility probe cannot restore the old usage key after an assig
 });
 
 
-for (const barrier of ['migration-marker', 'install-page']) {
-  test(`E2E fixture seed at ${barrier} distinguishes early migration from completed install`, { timeout: 5000 }, async () => {
-    await withWorker(async ({ api, send }) => {
+for (const barrier of ['migration-marker', 'startup-marker', 'install-page']) {
+  test(`E2E fixture seed at ${barrier} distinguishes early initialization from completed install`, { timeout: 5000 }, async () => {
+    await withWorker(async ({ api, send, startup }) => {
       const ready = createDeferred();
       const release = createDeferred();
       const originalGet = api.storage.local.get.bind(api.storage.local);
@@ -791,19 +791,20 @@ for (const barrier of ['migration-marker', 'install-page']) {
       };
       const seeded = { rules: [makeDailyLimitRule(21, 'general')], activeRuleListId: 'general',
         dailyRuleUsage: { version: 2, date: getLocalDateKey(), usageSeconds: { '21:general': 840 }, lastSample: null } };
-      const installing = api.runtime.onInstalled.listeners[0]({ reason: 'install' });
+      const initializing = barrier === 'startup-marker' ? startup() :
+        api.runtime.onInstalled.listeners[0]({ reason: 'install' });
       try {
         await ready.promise;
         assert.equal(api.storage.local.data.is_migrated_to_local, true);
         assert.equal(api.createdTabs.length, 0, 'install page is not created during migration');
-        if (barrier === 'migration-marker') await api.storage.local.set(seeded);
+        if (barrier !== 'install-page') await api.storage.local.set(seeded);
       } finally {
         release.resolve();
-        await installing;
+        await initializing;
         api.storage.local.get = originalGet;
       }
-      assert.ok(api.createdTabs.some(tab => tab.url === api.runtime.getURL('options/options.html')),
-        'the production install page follows initialization and pruning');
+      assert.equal(api.createdTabs.some(tab => tab.url === api.runtime.getURL('options/options.html')),
+        barrier !== 'startup-marker', 'only install creates a post-initialization Options barrier');
       if (barrier === 'install-page') await api.storage.local.set(seeded);
       const response = await send({ type: 'rules:activateList', payload: { listId: 'general' } });
       assert.equal(response.success, true, JSON.stringify(response));

@@ -14,6 +14,23 @@
 перша спроба — **36 passed**. Новий idle-сценарій нижче додає 37-й тест;
 цей попередній зелений результат не є його виконанням.
 
+На `0ee99c9f3324fbdc3db04975d97dd87c7f476b09` [run 37830491885](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37830491885)
+дав **36 passed, 1 failed**, без retries/skips. Новий idle/wake пройшов:
+у `native-idle-wake` PID 8997 збережено, worker зник через 30 секунд і
+прокинувся через 50, JS-маркер зник, `storage.session` sentinel збережено.
+Єдине падіння — початковий seed day-boundary 35 після зайвого підготовчого
+restart: migration marker уже існував, а seeded usage 120/840 став `{}`,
+DNR — `[]`, до timezone transition. Trace підтверджує порядок marker → seed →
+empty usage; Node-регресія з production startup і контрольованим API wait
+відтворює втрату бюджету після seed за раннім marker.
+
+Day-boundary тепер задає process TZ **першому fresh-install launch** через
+`initialTimezone`. Date-line пара обирається один раз перед launch і та сама
+пара використовується тілом тесту. Seed чекає наявний completed-install
+Options barrier. Підготовчий restart прибрано; наступні recovery/ABA рестарти,
+durable journal, usage assertions, native clock/visibility, UI/DNR і profile
+identity збережені. Це зміна fixture; production runtime/version не змінені.
+
 ## Локальний запуск
 
 З кореня Chromium-репозиторію, після застосування змін 5.3.20:
