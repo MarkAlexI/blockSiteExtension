@@ -2,12 +2,12 @@ import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs', 'readers.spec.mjs', 'stale.spec.mjs'],
+  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs', 'readers.spec.mjs', 'stale.spec.mjs', 'focus.spec.mjs'],
   fullyParallel: false,
   workers: 1,
   // Visibility/accounting scenarios require a browser with a real tab strip.
   // Linux without a desktop display uses xvfb-run (also in the CI workflow).
-  use: { headless: false },
+  use: { headless: process.env.BD_E2E_HEADLESS === '1' },
   retries: 0,
   timeout: 120_000,
   expect: { timeout: 15_000 },

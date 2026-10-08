@@ -3,6 +3,7 @@ import { test as base, expect } from 'playwright/test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
+import { launchNativeChromium } from './native-launch.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
@@ -63,10 +64,13 @@ export async function addUi(page, blockURL, { dailyMinutes = null } = {}) {
   if (dailyMinutes !== null) await expect(row.locator('.daily-limit-minutes')).toHaveValue(String(dailyMinutes));
   await row.locator('.save-btn').click();
   await expect(page.locator('#rules-container tr[data-rule-id]').filter({ hasText: blockURL })).toHaveCount(1);
-  await expect.poll(async () => (await page.evaluate(async () =>
-    (await chrome.storage.local.get('rules')).rules)).find(rule => rule.blockURL === blockURL)
-      ?.assignments?.find(item => item.listId === 'general')?.dailyLimit?.minutes ?? null)
-    .toBe(dailyMinutes);
+  await expect.poll(async () => page.evaluate(async blockURL => {
+    const stored = (await chrome.storage.local.get('rules')).rules.find(rule => rule.blockURL === blockURL);
+    const assignment = stored?.assignments?.find(item => item.listId === 'general');
+    return { exists: Boolean(stored), url: stored?.blockURL, list: assignment?.listId,
+      mode: assignment?.blockingMode, minutes: assignment?.dailyLimit?.minutes ?? null };
+  }, blockURL)).toEqual({ exists: true, url: blockURL, list: 'general',
+    mode: dailyMinutes === null ? 'always' : 'daily_limit', minutes: dailyMinutes });
 }
 
 class ExtensionHarness {
@@ -88,21 +92,22 @@ class ExtensionHarness {
     // A unique test profile is mandatory. Never connect to a personal browser.
     const launchOptions = {
       channel: 'chromium',
+      executablePath: process.env.BD_CHROMIUM_BINARY || undefined,
       headless: this.testInfo.project.use.headless !== false,
       locale: 'en-US',
       viewport: { width: 1280, height: 900 },
-      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`]
+      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`,
+        ...(process.env.BD_E2E_DISABLE_GPU === '1' ? ['--disable-gpu'] : [])]
     };
     if (this.testInfo.tags.includes('@native-visibility')) {
       // A second CDP session cannot release the visibility capture handle
       // held by Playwright's original session. Use the documented noDefaults
       // connection on a fresh browser's default profile for this scenario.
       const port = await freePort();
-      this.nativeOwner = await chromium.launch({
-        channel: launchOptions.channel,
-        headless: launchOptions.headless,
-        args: [...launchOptions.args, `--remote-debugging-port=${port}`,
-          '--remote-debugging-address=127.0.0.1', '--lang=en-US', '--window-size=1280,900']
+      this.nativeOwner = await launchNativeChromium({
+        executablePath: launchOptions.executablePath || chromium.executablePath(),
+        profile: this.profile, port, headless: launchOptions.headless,
+        args: launchOptions.args
       });
       this.nativeBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
         noDefaults: true, isLocal: true
@@ -254,14 +259,15 @@ class ExtensionHarness {
 
   async restart() {
     await this.saveTrace('before-restart-trace');
-    await this.context.close();
+    await this.closeBrowser();
+    this.context = this.nativeBrowser = this.nativeOwner = null;
     this.options = [];
     await this.launch();
   }
 
   async closeBrowser() {
-    // The CDP context disconnects from its browser; the launch owner must also
-    // stop the process and remove its fresh profile, including launch failures.
+    // Stop every launch owner, including setup failures and native restarts.
+    // The fixture owns the same isolated profile until final cleanup.
     try { await this.context?.close(); }
     finally {
       try { await this.nativeBrowser?.close(); }

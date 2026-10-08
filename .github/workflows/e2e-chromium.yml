@@ -55,5 +55,7 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
             e2e/results.json
+            dist/*-cws.zip.sha256
+            dist/*-cws.zip.build.json
           if-no-files-found: warn
           retention-days: 14

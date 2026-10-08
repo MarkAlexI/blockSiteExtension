@@ -29,12 +29,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: blockdistraction-cws-${{ github.sha }}
-          path: dist/*-cws.zip
+          path: |
+            dist/*-cws.zip
+            dist/*-cws.zip.sha256
+            dist/*-cws.zip.build.json
           retention-days: 14
 
       - name: Upload Edge Add-ons package
         uses: actions/upload-artifact@v4
         with:
           name: blockdistraction-edge-${{ github.sha }}
-          path: dist/*-edge.zip
+          path: |
+            dist/*-edge.zip
+            dist/*-edge.zip.sha256
+            dist/*-edge.zip.build.json
           retention-days: 14
