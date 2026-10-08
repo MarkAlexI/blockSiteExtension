@@ -47,6 +47,22 @@ Visibility-сценарій позначений `@native-visibility`. Для н
 Loopback CDP доступний лише під час тесту; launch owner закриває браузер
 і видаляє його профіль навіть після невдалого CDP-підключення.
 
+Fresh install чекає справжню Options-вкладку, яку `onInstalled` створює
+після `initializeExtension` та permission check. Раніший
+`is_migrated_to_local` не є бар'єром перед seed usage. На native visibility
+launch/restart старі Options/Popup закриваються через loopback DevTools HTTP
+до `connectOverCDP`, зі збереженням того самого профілю. Спочатку створюється
+одна нова `about:blank`, потім закриваються всі старі page targets, включно
+зі старою blank-вкладкою. Worker target та storage не змінюються.
+`native-pages-before-cdp` зберігає targets, а `native-cdp-setup-failure` —
+targets, PID, exit status та stderr. Timeout і retries набору не збільшені.
+
+Options focus smoke вставляє URL справжньою командою browser input.
+Capture listener перевіряє `isTrusted`, початковий URL focus і переходить
+у друге поле в тому самому `input` event. Межа `<100 ms` зберігається;
+per-character CDP calls і Node reads не витрачають це вікно. Подальший
+ввід, перевірка focus після 150 ms та точних persisted полів лишаються.
+
 За замовчуванням extension path — батьківська папка `e2e`. Для перевірки
 **байтів store ZIP** розпакуйте `BlockDistraction-5.3.20-cws.zip` у звичайну папку та вкажіть її:
 

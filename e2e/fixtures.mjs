@@ -3,7 +3,7 @@ import { test as base, expect } from 'playwright/test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
-import { launchNativeChromium } from './native-launch.mjs';
+import { launchNativeChromium, prepareNativePages } from './native-launch.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,7 @@ class ExtensionHarness {
     this.verificationHandler = async () => ({ status: 200, body: { isPro: true } });
     this.releaseVerification = null;
     this.traceStarted = false;
+    this.installed = false;
   }
 
   async launch({ timezone = this.timezone } = {}) {
@@ -113,9 +114,24 @@ class ExtensionHarness {
         profile: this.profile, port, headless: launchOptions.headless,
         args: launchOptions.args, env: launchOptions.env
       });
-      this.nativeBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
-        noDefaults: true, isLocal: true
-      });
+      try {
+        const prepared = await prepareNativePages(this.nativeOwner.endpoint, { waitForInstall: !this.installed });
+        await this.testInfo.attach('native-pages-before-cdp', {
+          contentType: 'application/json', body: JSON.stringify(prepared)
+        });
+        this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
+          noDefaults: true, isLocal: true
+        });
+      } catch (error) {
+        try {
+          await this.testInfo.attach('native-cdp-setup-failure', {
+            contentType: 'application/json', body: JSON.stringify(await this.nativeOwner.diagnostics())
+          });
+        } catch (diagnosticError) {
+          this.testInfo.annotations.push({ type: 'diagnostic', description: String(diagnosticError) });
+        }
+        throw error;
+      }
       [this.context] = this.nativeBrowser.contexts();
       expect(this.context, 'native default browser context').toBeTruthy();
       // Keep a blank tab while closing the install/onboarding tabs below.
@@ -157,9 +173,18 @@ class ExtensionHarness {
         observedWorkers: this.context.serviceWorkers().map(item => item.url()) }) });
     await expect.poll(async () => this.worker.evaluate(async () =>
       (await chrome.storage.local.get('is_migrated_to_local')).is_migrated_to_local), { timeout: 20_000 }).toBe(true);
+    if (!this.installed && !this.nativeOwner) {
+      // This real onInstalled page is created after the full initialization.
+      // Seeding at the earlier migration marker can race startup usage pruning.
+      const installUrl = `chrome-extension://${this.id}/options/options.html`;
+      await expect.poll(() => this.context.pages().some(page => page.url() === installUrl), {
+        timeout: 20_000, message: 'fresh install initialization completed before fixture seed'
+      }).toBe(true);
+    }
     for (const page of this.context.pages()) {
       if (page.url() !== 'about:blank') await page.close();
     }
+    this.installed = true;
   }
 
   async seed({ pro = true, legacy = false, rules = [], usage = {}, active = 'general', pending = [], rawUsage = null, retainedKey = false, focus = null } = {}) {

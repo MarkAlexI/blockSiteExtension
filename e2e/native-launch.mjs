@@ -1,5 +1,64 @@
 import { spawn } from 'node:child_process';
 
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const isInstallPage = target => target.type === 'page' &&
+  /^chrome-extension:\/\/[^/]+\/options\/options\.html(?:[?#]|$)/.test(target.url);
+
+async function targetsAt(endpoint) {
+  const response = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(1000) });
+  if (!response.ok) throw new Error(`Native Chromium target discovery: HTTP ${response.status}`);
+  const targets = await response.json();
+  if (!Array.isArray(targets)) throw new Error('Native Chromium target discovery returned no list');
+  return targets;
+}
+
+// Only called on the browser process/profile owned by this fixture. Clear the
+// restored pages before connectOverCDP: a page with an unresponsive renderer
+// must not block Playwright's page initialization. Keep one fresh blank tab.
+export async function prepareNativePages(endpoint, { waitForInstall = false, timeout = 15_000 } = {}) {
+  const deadline = Date.now() + timeout;
+  let targets = await targetsAt(endpoint);
+  while (waitForInstall && !targets.some(isInstallPage)) {
+    if (Date.now() >= deadline) throw new Error(`Native Chromium install page not observed: ${JSON.stringify(targets)}`);
+    await pause(100);
+    targets = await targetsAt(endpoint);
+  }
+  // onInstalled creates Options only after initializeExtension and the host
+  // permission check finish. is_migrated_to_local alone is an earlier marker.
+  const installObserved = targets.some(isInstallPage);
+  // A restored about:blank renderer can also be stale. Create the keeper before
+  // closing any old target so headed Chrome never loses its last browser window.
+  const response = await fetch(`${endpoint}/json/new?about:blank`, {
+    method: 'PUT', signal: AbortSignal.timeout(1000)
+  });
+  if (!response.ok) throw new Error(`Native Chromium blank page creation: HTTP ${response.status}`);
+  const keeper = await response.json();
+  if (!keeper.id || keeper.type !== 'page' || keeper.url !== 'about:blank') {
+    throw new Error(`Native Chromium unexpected blank page: ${JSON.stringify(keeper)}`);
+  }
+  targets = await targetsAt(endpoint);
+  const closedTargets = [];
+  do {
+    for (const target of targets.filter(target => target.type === 'page' && target.id !== keeper.id)) {
+      const response = await fetch(`${endpoint}/json/close/${encodeURIComponent(target.id)}`, {
+        signal: AbortSignal.timeout(1000)
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Native Chromium page cleanup: HTTP ${response.status} (${target.url})`);
+      }
+      closedTargets.push({ id: target.id, url: target.url });
+    }
+    targets = await targetsAt(endpoint);
+    if (!targets.some(target => target.type === 'page' && target.id !== keeper.id)) break;
+    if (Date.now() >= deadline) throw new Error(`Native Chromium page cleanup timed out: ${JSON.stringify(targets)}`);
+    await pause(100);
+  } while (true);
+  if (!targets.some(target => target.type === 'page' && target.id === keeper.id && target.url === 'about:blank')) {
+    throw new Error('Native Chromium page cleanup lost the last blank browser tab');
+  }
+  return { installObserved, keeper, closedTargets, remainingTargets: targets };
+}
+
 export function nativeChromiumArgs({ profile, port, headless, args = [] }) {
   return [...args, `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`,
     '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check',
@@ -18,7 +77,14 @@ export async function launchNativeChromium(config) {
   child.on('error', error => { failure = error; });
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16000); });
   const exited = new Promise(resolve => child.once('close', resolve));
-  const owner = { async close() {
+  const endpoint = `http://127.0.0.1:${config.port}`;
+  const owner = { endpoint, async diagnostics() {
+    let targets;
+    try { targets = await targetsAt(endpoint); }
+    catch (error) { targets = { error: String(error) }; }
+    return { pid: child.pid, exitCode: child.exitCode, signalCode: child.signalCode,
+      stderr, webSocketDebuggerUrl: owner.webSocketDebuggerUrl, targets };
+  }, async close() {
     if (child.exitCode !== null || child.signalCode !== null || failure) { await exited; return; }
     child.kill('SIGTERM');
     let timer;
@@ -32,11 +98,14 @@ export async function launchNativeChromium(config) {
       if (failure) throw failure;
       if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Native Chromium exited before CDP: ${stderr}`);
       try {
-        const response = await fetch(`http://127.0.0.1:${config.port}/json/version`, { signal: AbortSignal.timeout(1000) });
+        const response = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1000) });
         const version = await response.json();
-        if (response.ok && version.webSocketDebuggerUrl) return owner;
+        if (response.ok && version.webSocketDebuggerUrl) {
+          owner.webSocketDebuggerUrl = version.webSocketDebuggerUrl;
+          return owner;
+        }
       } catch { /* Wait only for startup readiness; never retry a scenario body. */ }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await pause(100);
     }
     throw new Error(`Native Chromium CDP startup timed out: ${stderr}`);
   } catch (error) { await owner.close(); throw error; }

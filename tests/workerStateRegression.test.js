@@ -770,6 +770,51 @@ test('a delayed visibility probe cannot restore the old usage key after an assig
 });
 
 
+for (const barrier of ['migration-marker', 'install-page']) {
+  test(`E2E fixture seed at ${barrier} distinguishes early migration from completed install`, { timeout: 5000 }, async () => {
+    await withWorker(async ({ api, send }) => {
+      const ready = createDeferred();
+      const release = createDeferred();
+      const originalGet = api.storage.local.get.bind(api.storage.local);
+      let held = false;
+      api.storage.local.get = (keys, callback) => {
+        if (keys === 'rules' && !held && new Error().stack.includes('migrateStoredRules')) {
+          held = true;
+          return originalGet(keys).then(async snapshot => {
+            ready.resolve();
+            await release.promise;
+            callback?.(snapshot);
+            return snapshot;
+          });
+        }
+        return originalGet(keys, callback);
+      };
+      const seeded = { rules: [makeDailyLimitRule(21, 'general')], activeRuleListId: 'general',
+        dailyRuleUsage: { version: 2, date: getLocalDateKey(), usageSeconds: { '21:general': 840 }, lastSample: null } };
+      const installing = api.runtime.onInstalled.listeners[0]({ reason: 'install' });
+      try {
+        await ready.promise;
+        assert.equal(api.storage.local.data.is_migrated_to_local, true);
+        assert.equal(api.createdTabs.length, 0, 'install page is not created during migration');
+        if (barrier === 'migration-marker') await api.storage.local.set(seeded);
+      } finally {
+        release.resolve();
+        await installing;
+        api.storage.local.get = originalGet;
+      }
+      assert.ok(api.createdTabs.some(tab => tab.url === api.runtime.getURL('options/options.html')),
+        'the production install page follows initialization and pruning');
+      if (barrier === 'install-page') await api.storage.local.set(seeded);
+      const response = await send({ type: 'rules:activateList', payload: { listId: 'general' } });
+      assert.equal(response.success, true, JSON.stringify(response));
+      assert.deepEqual(api.storage.local.data.dailyRuleUsage.usageSeconds,
+        barrier === 'install-page' ? { '21:general': 840 } : {},
+        'only the completed-install barrier preserves the seeded exhausted budget');
+      assert.deepEqual(api.dynamicRules.map(rule => rule.id), barrier === 'install-page' ? [21] : []);
+    }, { local: { activeRuleListId: 'general', is_migrated_to_local: true } });
+  });
+}
+
 test('a rule edit during the startup alarm await preserves legacy daily usage until migration', { timeout: 5000 }, async () => {
   const now = Date.now();
   await withWorker(async ({ api, send, startup }) => {
