@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { launchNativeChromium, prepareNativePages, targetsAt } from './native-launch.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
+import { observeColdWorker, evaluateColdProducer } from './native-cold-message.mjs';
+import { triggerColdMessages } from './cold-message.mjs';
 import { nativeStorageWrite, nativeWakeAlarms } from './native-activity.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import path from 'node:path';
@@ -279,6 +281,60 @@ class ExtensionHarness {
       await this.testInfo.attach('native-idle-wake', {
         contentType: 'application/json', body: JSON.stringify(observation)
       });
+    }
+  }
+
+  async idleUntilMessages(producerPage, token) {
+    expect(this.nativeOwner, 'cold message observation requires a native launch owner').toBeTruthy();
+    await this.saveTrace('before-cold-message-trace');
+    for (const page of this.context.pages()) if (page !== producerPage) await page.close();
+    const before = await this.nativeOwner.diagnostics();
+    const target = before.targets.find(target => target.type === 'page' && target.url === producerPage.url());
+    expect(target, 'original content producer target').toBeTruthy();
+    const producer = { id: target.id, url: target.url };
+    const workerUrl = this.worker.url();
+    const probe = await this.worker.evaluate(async token => {
+      globalThis.__bdIdleLifetime = token;
+      await chrome.storage.session.set({ __bdIdleLifetime: token });
+      const alarms = await chrome.alarms.getAll();
+      return { token, lastApiAt: Date.now(), alarms };
+    }, token);
+    const earliestAlarm = Math.min(...probe.alarms.map(alarm => alarm.scheduledTime));
+    const evidence = { pid: before.pid, profile: this.profile, workerUrl, producer, probe, earliestAlarm, samples: [] };
+    try {
+      await this.nativeBrowser.close();
+      this.context = this.nativeBrowser = this.worker = null; this.options = [];
+      evidence.detachedAt = Date.now();
+      evidence.cycle = await observeColdWorker(this.nativeOwner.endpoint, workerUrl, { producer,
+        lastApiAt: probe.lastApiAt, earliestAlarm, onSample: sample => evidence.samples.push(sample) });
+      // Recheck absence immediately before the PAGE-ONLY CDP connection. No
+      // browser/worker transport is reattached until all first replies arrive.
+      expect((await targetsAt(this.nativeOwner.endpoint)).some(target => target.type === 'service_worker' && target.url === workerUrl)).toBe(false);
+      const expression = `(${triggerColdMessages.toString()})(${JSON.stringify(token)})`;
+      evidence.firstReplies = await evaluateColdProducer(this.nativeOwner.endpoint, producer, expression);
+      const afterTargets = await targetsAt(this.nativeOwner.endpoint);
+      expect(afterTargets.filter(target => target.type === 'service_worker' && target.url === workerUrl)).toHaveLength(1);
+      evidence.afterRepliesTargets = afterTargets;
+      evidence.after = await this.nativeOwner.diagnostics();
+      expect(evidence.after.pid).toBe(before.pid);
+      expect(evidence.after.exitCode).toBeNull(); expect(evidence.after.signalCode).toBeNull();
+      expect(evidence.after.webSocketDebuggerUrl).toBe(before.webSocketDebuggerUrl);
+      this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, { noDefaults: true, isLocal: true });
+      [this.context] = this.nativeBrowser.contexts();
+      await this.configureContext();
+      const { worker, identity } = await extensionWorker(this.context, this.manifest);
+      expect(identity.id).toBe(this.id); this.worker = worker;
+      evidence.restoredIdentity = await worker.evaluate(async () => ({
+        global: globalThis.__bdIdleLifetime ?? null,
+        session: (await chrome.storage.session.get('__bdIdleLifetime')).__bdIdleLifetime ?? null }));
+      expect(evidence.restoredIdentity).toEqual({ global: null, session: token });
+      return evidence;
+    } catch (error) {
+      evidence.error = error.stack || String(error);
+      evidence.after ??= await this.nativeOwner.diagnostics();
+      throw error;
+    } finally {
+      await this.testInfo.attach('native-cold-message', { contentType: 'application/json', body: JSON.stringify(evidence) });
     }
   }
 

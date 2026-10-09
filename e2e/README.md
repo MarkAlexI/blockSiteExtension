@@ -467,3 +467,71 @@ Screenshots Options знімаються після завершення сце�
 - https://playwright.dev/docs/service-workers
 - https://playwright.dev/docs/ci-intro
 - https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp-option-no-defaults
+
+
+## Перші content messages після native worker idle unload
+
+`cold-message-native.spec.mjs` додає один сценарій: увесь native набір тепер
+містить 40 тестів у 12 файлах. Node 22 потрібен для page-only CDP WebSocket;
+workflow уже використовує Node 22. Root module checks лишаються сумісні з Node 20.
+
+
+Durable fixture: Daily Limit 21 із 840 seconds, правило 22 у неактивному Study,
+ручна 10-minute Hardcore Focus через справжній Popup reader UI, disabled
+Scheduled Focus revision 7 та явно збережені ненульові generation/rule/list
+revisions. Metadata і schedule записано справжнім storage.local API; це fixture,
+а не імпорт або crash між writes. Production runtime і version 5.3.20 незмінні.
+
+Після справжнього minute tick залишено лише HTTP producer із content script,
+інжектованим native scripting.executeScript. Він не викликає runtime API до
+явного trigger. Сценарій спочатку підтверджує automatic unload із native default
+idle interval та sustained stopped/absent стан щонайменше 1 second. Жодного
+readiness ping, reload, terminate або примусового restart перед cold request.
+
+П’ять повідомлень надсилаються одним synchronous burst, без await між sends,
+таймера або retry: check_pro_status, focus_schedule_get, валідний rename Study,
+rename Work із застарілою generation, rename Work із застарілою list revision.
+Усі перші callbacks мають завершитись до кожного native alarm. Перевіряються
+саме початкові packets: paid true, schedule config/revision 7, повні rules/list
+дані й успішний валідний intent, точний rules_state_changed для обох stale
+intents. Пізніший правильний state не може виправити неправильну першу відповідь.
+
+До відкриття читачів cold storage/DNR мають зберегти Focus, 840 seconds, порожній
+journal, generation/rule revisions і всі незмінені list revisions. Лише rename
+Study змінює name та його revision. JS global sentinel губиться, native session
+sentinel і той самий process/profile зберігаються. Потім reopened Options/Popup
+reader та реальна навігація перевіряють чинний Focus і exhausted budget. Це reader
+у вкладці; справжній toolbar Popup покрито іншими сценаріями.
+
+Node controls відхиляють pinned background, early/competing wake, відсутній
+producer, погані first replies, прийняті stale intents і retry. Окремі два
+production-worker тести (із контрольованими storage API waits) надсилають перший
+burst без warm-up intent і під час утриманого startup; listener мусить лишити
+канал відкритим, не відповідати default state до read completion і повернути
+правильні дані. Це production modules із model APIs, не native browser proof.
+
+Native cold wake перевіряє повторний module/context startup від message після
+idle, а не browser runtime.onStartup overlap, install/reload registration gap,
+OS suspend/resume, Android/macOS або весь проміжний state history. Для browser
+onStartup overlap окремо наведено контрольований production-module тест. Додані
+сценарії не підміняють Date, API results або browser alarm delivery; retries 0.
+
+Від’єднано всі Playwright/CDP transports. HTTP /json/list пасивно підтверджує
+worker absence; далі єдиний page-only WebSocket виконує Runtime.evaluate у вже
+існуючому HTTP producer. Browser/worker CDP під’єднуються лише після всіх п’яти
+first replies. Native ActivityLog підтверджує п’ять runtime.onMessage callbacks
+із token і відсутність alarm callbacks у cold interval; raw log не є доказом
+storage/DNR commit, які перевіряються окремим native read.
+
+На цей сценарій відведено 210 seconds: fresh install maintenance, справжній
+minute tick, native idle, first replies і readers. Existing deadlines не змінено.
+Діагностика: before-cold-message-trace, native-cold-message,
+cold-first-responses-and-state та native-owner-final.
+
+```sh
+cd e2e
+xvfb-run -a npm test -- cold-message-native.spec.mjs
+```
+
+Офіційна вимога synchronous listener registration:
+https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/events
