@@ -7,6 +7,17 @@ const id = 'a'.repeat(32), other = 'b'.repeat(32);
 const line = (api, args, { extension = id, category = 'api_call', count = 1 } = {}) =>
   `[12:34:1009/120000.000000:VERBOSE1:activity_log.cc(781)] ACTION ID=-1 EXTENSION ID=${extension} CATEGORY=${category} API=${api} ARGS=${JSON.stringify(args)} COUNT=${count}\n`;
 
+test('native activity stream model preserves raw live count zero and positive database counts', () => {
+  const logger = createNativeActivityLog();
+  for (const count of [0, 1, 2]) logger.push(line('alarms.onAlarm',
+    [{ name: 'end_focus_session', scheduledTime: 60_000 }], { category: 'api_event_callback', count })
+    .replace('activity_log.cc(781)', 'chrome/browser/extensions/activity_log/activity_log.cc:777'));
+  const result = logger.snapshot(id);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.events.map(event => event.count), [0, 1, 2]);
+  assert.deepEqual(result.events.map(event => event.args[0].name), Array(3).fill('end_focus_session'));
+});
+
 test('native activity stream model handles every UTF-8 split and preserves native callback order', () => {
   const input = Buffer.from(line('alarms.onAlarm', [{ name: 'end_focus_session', scheduledTime: 60_000 }],
     { category: 'api_event_callback' }) + line('storage.set', ['local', { label: 'Фокус 🕒' }]));

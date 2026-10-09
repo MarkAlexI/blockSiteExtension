@@ -7,7 +7,9 @@ const inactive = { focusActive: false, focusEndTime: 0, isHardcore: false, focus
 
 export function assertNativeAlarmBatch({ activity, cold, before, fixture, expired }) {
   assert.deepEqual(activity.errors, [], 'native activity observation retained its complete stream');
-  for (const event of activity.events) assert.equal(event.count, 1, 'native activity history is not aggregated');
+  // Chromium's live Action::PrintForDebug records keep count_ at its default
+  // zero; positive counts belong to merged database records.
+  for (const event of activity.events) assert.equal(event.count, 0, 'native live activity retains the unmerged count zero');
   const deliveries = activity.events.filter(event => event.category === 'api_event_callback' && event.api === 'alarms.onAlarm');
   assert.deepEqual(deliveries.map(event => event.args?.[0]?.name).sort(), NATIVE_ALARM_BATCH,
     'three native alarm callbacks exactly once, without prescribing delivery order');

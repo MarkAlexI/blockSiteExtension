@@ -9,6 +9,22 @@
 `results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
 Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
+На `05d5708c45c0cfbf4306a27fbd9e44c5f3889381`
+[run 37946464789](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37946464789)
+має **37 passed / 2 failed**, Extension CI успішний. Обидва alarm bodies
+пройшли native unload/wake та cold-state poll, але зупинилися на помилковій
+вимозі `event.count === 1`. У вкладеннях cold ActivityLog має 83/51 записи,
+усі з raw `COUNT=0`, без parser errors. Native PID збережено, JS-маркер
+зник, session sentinel залишився; три alarms доставлено в різному порядку.
+[Chromium 151 Action](https://github.com/chromium/chromium/blob/151.0.7922.34/chrome/browser/extensions/activity_log/activity_actions.h)
+починає `count_` з нуля; це поле обліковує merged database records.
+Live `PrintForDebug` history тепер вимагає точний raw zero. Позитивні counts
+1/2, missing/duplicate callbacks, неправильний timestamp і transient writes
+залишаються помилками. Усі cold-history assertions пройшли replay обох
+збережених CI-вкладень після виправлення; це не новий browser run.
+UI/navigation частина після history ще потребує нового CI. Runtime,
+версія, timeouts/retries і native parser незмінні.
+
 На `e8a33f6b9cfb4313f5d00d6d4ec99482b512aff4`
 [run 37942510361](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37942510361)
 має **37 passed / 2 failed**, Extension CI успішний. Обидва нові alarm bodies

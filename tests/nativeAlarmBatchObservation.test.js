@@ -5,7 +5,7 @@ import { assertNativeAlarmBatch, NATIVE_ALARM_BATCH } from '../e2e/native-alarm-
 const inactive = { focusActive: false, focusEndTime: 0, isHardcore: false, focusMode: 'blacklist' };
 const dnr = (id, reason) => ({ id, action: { type: 'redirect', redirect: { url: `chrome-extension://test/blocked.html?reason=${reason}` } },
   condition: { resourceTypes: ['main_frame'] } });
-const write = values => ({ category: 'api_call', api: 'storage.set', count: 1, args: ['local', values] });
+const write = values => ({ category: 'api_call', api: 'storage.set', count: 0, args: ['local', values] });
 function model(expired) {
   const before = { focusSession: { focusActive: true, focusEndTime: expired ? 60_000 : 180_000,
     isHardcore: !expired, focusMode: 'blacklist' }, statistics: { successfulFocusSessions: 3 },
@@ -22,9 +22,9 @@ function model(expired) {
     dailyRuleUsage: { usageSeconds: { '21:general': 840 } }, pendingDailyUsageRemaps: [],
     dnr: expired ? [dnr(21, 'daily_limit')] : [dnr(21, 'focus'), dnr(22, 'focus')] };
   const activity = { errors: [], events: [...NATIVE_ALARM_BATCH].reverse().map(name =>
-    ({ category: 'api_event_callback', api: 'alarms.onAlarm', count: 1, args: [{ name, scheduledTime: 60_000 }] })) };
+    ({ category: 'api_event_callback', api: 'alarms.onAlarm', count: 0, args: [{ name, scheduledTime: 60_000 }] })) };
   activity.events.push(expired ? write({ focusSession: inactive }) : write({ focusSchedule: cold.focusSchedule }));
-  activity.events.push({ category: 'api_call', api: 'declarativeNetRequest.updateDynamicRules', count: 1, args: [{ addRules: cold.dnr }] });
+  activity.events.push({ category: 'api_call', api: 'declarativeNetRequest.updateDynamicRules', count: 0, args: [{ addRules: cold.dnr }] });
   return { expired, before, fixture, cold, activity };
 }
 
@@ -40,6 +40,7 @@ test('native batch observation model rejects missing, repeated, aggregated and w
   for (const change of [
     value => value.activity.events.shift(),
     value => value.activity.events.push(value.activity.events[0]),
+    value => { value.activity.events[0].count = 1; },
     value => { value.activity.events[0].count = 2; },
     value => { value.activity.events[0].args[0].scheduledTime++; }
   ]) {
@@ -56,7 +57,7 @@ test('native batch observation model rejects transient activation and manual ove
 
 test('native batch observation model checks every DNR request as well as actual installed rules', () => {
   const transient = model(false);
-  transient.activity.events.push({ category: 'api_call', api: 'declarativeNetRequest.updateDynamicRules', count: 1, args: [{ addRules: [dnr(21, 'daily_limit')] }] });
+  transient.activity.events.push({ category: 'api_call', api: 'declarativeNetRequest.updateDynamicRules', count: 0, args: [{ addRules: [dnr(21, 'daily_limit')] }] });
   assert.throws(() => assertNativeAlarmBatch(transient), /every DNR request/);
   const cold = model(true); cold.cold.dnr.push(dnr(22, 'focus'));
   assert.throws(() => assertNativeAlarmBatch(cold), /actual cold native DNR/);
