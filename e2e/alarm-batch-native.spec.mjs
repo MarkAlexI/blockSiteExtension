@@ -41,7 +41,8 @@ for (const expired of [true, false]) {
       await expect.poll(() => e.nativeOwner.activity.snapshot(e.id).events.some(event => event.api ===
         'declarativeNetRequest.updateDynamicRules' && event.args?.[0]?.addRules?.some(rule => rule.id === 22)),
       { timeout: 5000, message: 'positive control: real Focus DNR request observed' }).toBe(true);
-      const fixture = await e.worker.evaluate(async expired => {
+      // Dynamic import is supported in the Options Window, not in a service worker.
+      const fixture = await options.evaluate(async expired => {
         const calendar = await import(chrome.runtime.getURL('schedules/focusSchedule.js'));
         const session = (await chrome.storage.local.get('focusSession')).focusSession;
         const now = Date.now();

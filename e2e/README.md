@@ -9,6 +9,19 @@
 `results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
 Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
+На `e8a33f6b9cfb4313f5d00d6d4ec99482b512aff4`
+[run 37942510361](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37942510361)
+має **37 passed / 2 failed**, Extension CI успішний. Обидва нові alarm bodies
+пройшли warm ActivityLog, UI Focus storage та DNR positive controls, але
+зупинилися до idle unload: Chromium забороняє dynamic `import()` у service worker.
+Fixture тепер імпортує встановлений production calendar у вже відкритому
+Options Window, використовуючи його native Date/Intl і справжній storage API.
+Перед idle ця сторінка закривається разом з іншими extension views.
+Alarms, passive unload/wake observation, history та assertions збережені;
+runtime і версія незмінні. Повне виконання двох bodies потребує нового CI.
+Coherent Popup scenario цього разу пройшов; першопричину попередніх порожніх
+native translations цим не встановлено.
+
 На `f8ad68b0eaf180afd3202a93b2ba68d30944842c`
 [run 37925397622](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37925397622)
 має **36 passed / 3 failed**, Extension CI успішний. Обидва нові alarm bodies
