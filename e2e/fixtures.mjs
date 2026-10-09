@@ -120,7 +120,14 @@ class ExtensionHarness {
         activityLog: this.testInfo.tags.includes('@native-activity-log')
       });
       try {
-        const prepared = await prepareNativePages(this.nativeOwner.endpoint, { waitForInstall: !this.installed });
+        // --lang=en-US falls back to the installed English catalog. The real
+        // Options title proves its native translation completed; fetching or
+        // replacing translations in the renderer would hide an empty bundle.
+        const installTitle = this.installed ? undefined : JSON.parse(await readFile(
+          path.join(extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
+        const prepared = await prepareNativePages(this.nativeOwner.endpoint, {
+          waitForInstall: !this.installed, installTitle
+        });
         await this.testInfo.attach('native-pages-before-cdp', {
           contentType: 'application/json', body: JSON.stringify(prepared)
         });
@@ -509,10 +516,14 @@ class ExtensionHarness {
                 const messages = { header: chrome.i18n.getMessage('header'),
                   deletebtn: chrome.i18n.getMessage('deletebtn'),
                   daily_limit_usage: chrome.i18n.getMessage('daily_limit_usage', ['7', '10']) };
+                // Chromium's disk loader retains @@extension_id even if the
+                // catalog fails; a wholly empty IPC/cache loses that too.
+                const predefinedMessages = Object.fromEntries(['@@extension_id', '@@ui_locale', '@@bidi_dir']
+                  .map(key => [key, chrome.i18n.getMessage(key)]));
                 const response = await fetch(chrome.runtime.getURL(`_locales/${manifest.default_locale}/messages.json`));
                 const catalog = response.ok ? await response.json() : null;
                 return { url: location.href, id: chrome.runtime.id, defaultLocale: manifest.default_locale,
-                  uiLanguage: chrome.i18n.getUILanguage(), messages, catalogStatus: response.status,
+                  uiLanguage: chrome.i18n.getUILanguage(), messages, predefinedMessages, catalogStatus: response.status,
                   defaultCatalog: Object.fromEntries(Object.keys(messages).map(key => [key, catalog?.[key] ?? null])),
                   usageRows: [...document.querySelectorAll('.rule-daily-limit-popup')].map(row => row.textContent) };
               }));

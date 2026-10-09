@@ -16,16 +16,34 @@ export async function targetsAt(endpoint) {
 // Only called on the browser process/profile owned by this fixture. Clear the
 // restored pages before connectOverCDP: a page with an unresponsive renderer
 // must not block Playwright's page initialization. Keep one fresh blank tab.
-export async function prepareNativePages(endpoint, { waitForInstall = false, timeout = 15_000 } = {}) {
+export async function prepareNativePages(endpoint, { waitForInstall = false, installTitle, timeout = 15_000 } = {}) {
+  if (waitForInstall && (typeof installTitle !== 'string' || !installTitle.trim() || installTitle === 'header')) {
+    throw new Error('Native Chromium install readiness requires the installed English header message');
+  }
   const deadline = Date.now() + timeout;
   let targets = await targetsAt(endpoint);
-  while (waitForInstall && !targets.some(isInstallPage)) {
-    if (Date.now() >= deadline) throw new Error(`Native Chromium install page not observed: ${JSON.stringify(targets)}`);
+  let installReady = null;
+  while (waitForInstall) {
+    const target = targets.find(isInstallPage);
+    if (target?.title === installTitle) {
+      installReady = { id: target.id, title: target.title, expectedTitle: installTitle };
+      break;
+    }
+    if (target?.title === 'header') {
+      throw new Error(`Native Chromium install localization failed before page cleanup: ${JSON.stringify(target)}`);
+    }
+    if (Date.now() >= deadline) {
+      const reason = target ? 'install localization not completed' : 'install page not observed';
+      throw new Error(`Native Chromium ${reason}: ${JSON.stringify(targets)}`);
+    }
     await pause(100);
     targets = await targetsAt(endpoint);
   }
   // onInstalled creates Options only after initializeExtension and the host
   // permission check finish. is_migrated_to_local alone is an earlier marker.
+  // Page creation does not finish its first native i18n IPC. Options sets its
+  // title through t('header'); observe that real catalog value before closing
+  // the fresh view. A literal key is an error, never a readiness fallback.
   const installObserved = targets.some(isInstallPage);
   // A restored about:blank renderer can also be stale. Create the keeper before
   // closing any old target so headed Chrome never loses its last browser window.
@@ -57,7 +75,7 @@ export async function prepareNativePages(endpoint, { waitForInstall = false, tim
   if (!targets.some(target => target.type === 'page' && target.id === keeper.id && target.url === 'about:blank')) {
     throw new Error('Native Chromium page cleanup lost the last blank browser tab');
   }
-  return { installObserved, keeper, closedTargets, remainingTargets: targets };
+  return { installObserved, installReady, keeper, closedTargets, remainingTargets: targets };
 }
 
 export function nativeChromiumArgs({ profile, port, headless, args = [], activityLog = false }) {

@@ -9,6 +9,41 @@
 `results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
 Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
+На `49e48d05aef932113c299fcc5a01598c50f2c52f`
+[run 37970460255](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37970460255)
+має **39 passed / 1 failed**, без retries; Extension CI успішний. Новий cold
+message body пройшов повністю, включно з native callbacks, alarms, UI та
+navigation. Єдине падіння — coherent Popup reader, `reader initial rows`,
+до import/probe та assignment moves. Trace показує наявний Daily Limit span
+із текстом `daily_limit_usage`. `native-i18n-final` підтверджує порожні native
+`header`, `deletebtn`, `daily_limit_usage` в обох відкритих extension views,
+хоча default catalog повертає HTTP 200 і містить правильні entries. Durable
+usage 420/120, rules та Pro credentials збережено. Це повтор попереднього
+localization failure, а не доказ втрати budget або некогерентного snapshot.
+
+Harness закривав install Options після появи target, до завершення її першої
+локалізації. [Chromium 151 SharedL10nMap](https://github.com/chromium/chromium/blob/151.0.7922.34/extensions/renderer/shared_l10n_map.cc)
+синхронно отримує bundle і кешує відповідь, включно з порожньою. Зв'язок
+передчасного закриття Options із порожньою відповіддю — **гіпотеза**: trace
+починається після cleanup і не містить цього першого IPC. Fresh setup тепер
+чекає реальний Options title, який production `t('header')` отримав із native
+API; очікуване значення читається з установленого English catalog при
+`--lang=en-US`. Це HTTP target observation, без renderer evaluation, shim,
+reload або повторного запуску. Literal `header` одразу зупиняє setup із
+помилкою; pending title має той самий 15-second deadline. Бар'єр не
+застосовується до restored pages під час restart. Новий `installReady`
+у `native-pages-before-cdp` зберігає native title та target ID.
+
+Failed i18n diagnostics додатково зберігають `@@extension_id`, `@@ui_locale`
+та `@@bidi_dir` до fetch. [Chromium disk loader](https://github.com/chromium/chromium/blob/151.0.7922.34/extensions/browser/l10n_file_util.cc)
+залишає `@@extension_id` навіть при невдалому читанні catalog; повністю порожня
+відповідь IPC/cache не має і цього ключа. Попередній artifact не містить цих
+reserved values, тому конкретну гілку помилки ним не встановлено. Три HTTP
+protocol-model regressions перевіряють pending, untranslated і unfinished
+install title. Вони не є native Chromium E2E; усунення CI failure потребує
+нового browser run. Runtime, версія, visible usage assertions і retries
+незмінні.
+
 На `05d5708c45c0cfbf4306a27fbd9e44c5f3889381`
 [run 37946464789](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37946464789)
 має **37 passed / 2 failed**, Extension CI успішний. Обидва alarm bodies
@@ -126,7 +161,8 @@ Loopback CDP доступний лише під час тесту; launch owner 
 
 Fresh install чекає справжню Options-вкладку, яку `onInstalled` створює
 після `initializeExtension` та permission check. Раніший
-`is_migrated_to_local` не є бар'єром перед seed usage. На native visibility
+`is_migrated_to_local` не є бар'єром перед seed usage. Native fresh launch
+також чекає її перекладений title до закриття install view. На native visibility
 launch/restart старі Options/Popup закриваються через loopback DevTools HTTP
 до `connectOverCDP`, зі збереженням того самого профілю. Спочатку створюється
 одна нова `about:blank`, потім закриваються всі старі page targets, включно
