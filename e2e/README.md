@@ -579,3 +579,61 @@ xvfb-run -a npm test -- cold-message-native.spec.mjs
 
 Офіційна вимога synchronous listener registration:
 https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/events
+
+
+## Два native вікна та перенесення вкладки (44)
+
+База `047c1e474c8839d2f4d6ee52e4981de9542c91bf` має успішний повний native CI: 40/40.
+Цей патч додає один сценарій: новий список містить **41 tests**; кількість
+не дорівнює найбільшому ID. Додавання до списку не є native виконанням.
+
+Дві вкладки можуть бути `active` одночасно в різних нормальних вікнах.
+У headed Firefox 158.0b2 обидва їх документи також `visible`, хоча лише
+один має document/window focus. На незміненому Firefox tracker фонове
+завантаження B durably змінює власника segment з A на B при незмінному
+фокусі A. Tracker тепер запитує поточну active вкладку через
+`lastFocusedWindow: true`; event hint зберігає свій URL лише коли
+збігаються і `tabId`, і `windowId` поточної вкладки. Це виправлення
+підтвердженого Firefox runtime failure; аналогічна гілка Chromium має
+production-module regressions і потребує свого native CI.
+
+Сценарій використовує справжні `windows.create({tabId, focused:false})`,
+`windows.update({focused:true})`, `tabs.move`, `tabs.update`, native Date,
+visibility, alarms, storage і DNR. Вкладки спостерігаються за native ID
+через `scripting.executeScript`, без припущення про збереження CDP/BiDi
+page context після перенесення. Перевіряються реальні onDetached/onAttached
+з тим самим tabId, обидва windowId та справжні onUpdated completions.
+
+У трьох стабільних фазах фонове завантаження відбувається після 2.2 секунди
+реального foreground часу. Кожний спостережуваний durable usage write
+зберігає foreground owner і точний budget іншого вікна. Позитивний контроль
+вимагає приросту foreground usage, видимого unfocused документа в іншому
+вікні та незмінного реального фокусу. Приріст обмежений одним elapsed
+timeline; історія ніколи не зменшує counters. Модельні fault controls
+відхиляють transient wrong owner навіть при правильному фінальному стані,
+inactive charge, дублювання часу й втрату budget.
+
+Після native deadline вичерпана вкладка A закривається production cleanup,
+обидва вікна залишаються відкритими, а B не втрачає budget. Options та
+Popup **reader у вкладці** показують точні persisted usage/minutes. Нова
+навігація A справді отримує `blocked.html?reason=daily_limit`, B залишається
+дозволеною. Це не додаткове покриття toolbar Popup.
+
+Linux/Xvfb потребує нормального window manager: використовуємо наявний
+або власний Openbox, який завершується після тесту. Headless не проходить
+передумову native focus. Перехід фокусу може містити WINDOW_ID_NONE,
+тому вимірювана фаза починається після native focus/state та 200 ms без
+нових спостережуваних подій; після background load також чекаємо його
+реальний completion і завершення спостережуваних writes. Ці бар'єри не
+перезапускають сценарій і не виправляють runtime стан. Історія охоплює
+доставлені listener callbacks, не всі можливі внутрішні interleavings
+браузера. Таймаути попередніх сценаріїв і retries незмінні.
+
+Підтверджені межі: два normal windows на Linux, без session restore,
+OS suspend/resume, browser-to-other-app focus, minimized windows, live
+midnight або idle worker unload. Firefox macOS/Android та native Edge
+цим не перевірені.
+
+```bash
+xvfb-run -a npx playwright test multi-window-native.spec.mjs
+```
