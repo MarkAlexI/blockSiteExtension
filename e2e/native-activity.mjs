@@ -7,7 +7,9 @@ export const NATIVE_ACTIVITY_ARGS = ['--enable-extension-activity-logging',
 // ActivityLog::LogAction / Action::PrintForDebug, emitted by Chromium itself.
 // Read the owner's stderr without attaching to a worker or changing its code.
 function parseLine(line) {
-  const source = /^\[[^\]]*:VERBOSE1:activity_log\.cc(?:\(\d+\)|:\d+)\]\s+(ACTION ID=.*)$/.exec(line);
+  // Chrome 151 base::LogMessage::Init strips ../../ but retains the source
+  // directory. Keep the native source check; console text is not evidence.
+  const source = /^\[[^\]]*:VERBOSE1:(?:chrome\/browser\/extensions\/activity_log\/)?activity_log\.cc(?:\(\d+\)|:\d+)\]\s+(ACTION ID=.*)$/.exec(line);
   if (!source) return null;
   const header = /^ACTION ID=(-?\d+) EXTENSION ID=([a-p]{32}) CATEGORY=(\S+) API=(\S+)(.*)$/.exec(source[1]);
   if (!header) throw new Error('Unrecognized native ActivityLog header');

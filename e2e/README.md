@@ -9,6 +9,27 @@
 `results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
 Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
+На `f8ad68b0eaf180afd3202a93b2ba68d30944842c`
+[run 37925397622](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37925397622)
+має **36 passed / 3 failed**, Extension CI успішний. Обидва нові alarm bodies
+зупинилися на warm ActivityLog control до Focus setup/idle; вкладення містять
+нуль розпізнаних events. Parser помилково очікував basename, тоді як
+[Chrome 151 logging source](https://github.com/chromium/chromium/blob/151.0.7922.34/base/logging.cc)
+залишає `chrome/browser/extensions/activity_log/activity_log.cc` у prefix.
+Виправлення приймає цей точний native шлях; усі positive controls, history,
+idle/wake та assertions збережено. Raw stderr того запуску не було у вкладеннях,
+тому виправлений parser ще потребує native підтвердження у новому CI.
+
+Третє падіння — `reader initial rows` у coherent Popup scenario, до import.
+Trace показує `<span class="rule-daily-limit-popup">daily_limit_usage</span>`
+та інші буквальні translation keys; durable rules, credentials і 420/120
+секунд збережені. Першопричину порожнього native message bundle не встановлено.
+Failed teardown тепер зберігає `native-i18n-final`: native getMessage results,
+UI language, фактичні default catalog entries та row text. `native-owner-final`
+додає raw stderr/PID/targets для failed native tests і alarm observer tests.
+Це діагностика після scenario; вона не змінює callbacks, не перезавантажує UI
+та не послаблює перевірку видимих usage values. Runtime і версія незмінні.
+
 На базі `1f2acfd1ee3d0e3dbe29083303a2e0e499c30892`
 [run 37907288475](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37907288475)
 підтвердив **37 passed**, Extension CI теж зелений. Два нові native alarm

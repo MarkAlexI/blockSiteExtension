@@ -420,6 +420,36 @@ class ExtensionHarness {
         catch (error) { diagnosticErrors.push({ label, error: error.stack || String(error) }); }
       };
       try {
+        const failed = this.testInfo.status !== this.testInfo.expectedStatus;
+        if (this.nativeOwner && (failed || this.nativeOwner.activity)) {
+          await capture('native-owner-final', async () => this.testInfo.attach('native-owner-final', {
+            // Preserve raw stderr even when an observer recognizes no records.
+            body: JSON.stringify(await this.nativeOwner.diagnostics(), null, 2), contentType: 'application/json'
+          }));
+        }
+        if (failed) {
+          await capture('native-i18n-final', async () => {
+            const pages = [];
+            for (const page of this.context.pages()) {
+              if (page.isClosed() || !page.url().startsWith(`chrome-extension://${this.id}/`)) continue;
+              pages.push(await page.evaluate(async () => {
+                const manifest = chrome.runtime.getManifest();
+                // Observe the native API before fetching catalog bytes. Do not
+                // replace getMessage, reload the document or rerender the UI.
+                const messages = { header: chrome.i18n.getMessage('header'),
+                  deletebtn: chrome.i18n.getMessage('deletebtn'),
+                  daily_limit_usage: chrome.i18n.getMessage('daily_limit_usage', ['7', '10']) };
+                const response = await fetch(chrome.runtime.getURL(`_locales/${manifest.default_locale}/messages.json`));
+                const catalog = response.ok ? await response.json() : null;
+                return { url: location.href, id: chrome.runtime.id, defaultLocale: manifest.default_locale,
+                  uiLanguage: chrome.i18n.getUILanguage(), messages, catalogStatus: response.status,
+                  defaultCatalog: Object.fromEntries(Object.keys(messages).map(key => [key, catalog?.[key] ?? null])),
+                  usageRows: [...document.querySelectorAll('.rule-daily-limit-popup')].map(row => row.textContent) };
+              }));
+            }
+            await this.testInfo.attach('native-i18n-final', { body: JSON.stringify(pages, null, 2), contentType: 'application/json' });
+          });
+        }
         if (this.worker) await capture('final-extension-state', async () => this.testInfo.attach('final-extension-state', {
           body: JSON.stringify(await this.state(), null, 2), contentType: 'application/json'
         }));

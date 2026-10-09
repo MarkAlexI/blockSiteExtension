@@ -39,6 +39,41 @@ test('native activity stream model accepts both Chromium source-location formats
   assert.deepEqual(logger.snapshot(id).events.map(event => event.args[0]), ['local', 'session']);
 });
 
+test('Chrome 151 source-path activity records retain alarm delivery and storage arguments across chunk boundaries', () => {
+  const input = Buffer.from(line('alarms.onAlarm', [{ name: 'check_pro_expiry', scheduledTime: 60_000 }],
+    { category: 'api_event_callback' }).replace('activity_log.cc(781)', 'chrome/browser/extensions/activity_log/activity_log.cc:781') +
+    line('storage.set', ['session', { fence: 'Фокус 🕒' }])
+      .replace('activity_log.cc(781)', 'chrome/browser/extensions/activity_log/activity_log.cc(781)'));
+  for (let offset = 0; offset <= input.length; offset++) {
+    const logger = createNativeActivityLog();
+    logger.push(input.subarray(0, offset)); logger.push(input.subarray(offset)); logger.finish();
+    const result = logger.snapshot(id);
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(result.events.map(event => event.api), ['alarms.onAlarm', 'storage.set']);
+    assert.equal(result.events[0].args[0].name, 'check_pro_expiry');
+    assert.deepEqual(nativeStorageWrite(result.events[1]), { area: 'session', values: { fence: 'Фокус 🕒' } });
+  }
+});
+
+test('source-path activity parsing still rejects other native sources and console lookalikes', () => {
+  const native = line('storage.set', ['local', {}])
+    .replace('activity_log.cc(781)', 'chrome/browser/extensions/activity_log/activity_log.cc:781');
+  const logger = createNativeActivityLog();
+  logger.push(native.replace('/activity_log.cc:', '/other.cc:'));
+  logger.push(native.replace('chrome/browser/extensions/activity_log/', 'untrusted/'));
+  logger.push('[12:34:1009:INFO:CONSOLE(0)] "' + native.trim() + '"\n');
+  assert.deepEqual(logger.snapshot(id).events, []);
+  assert.deepEqual(logger.snapshot(id).errors, []);
+});
+
+test('malformed full-source-path ActivityLog records report lost observation', () => {
+  const logger = createNativeActivityLog();
+  logger.push(line('storage.set', ['local', {}])
+    .replace('activity_log.cc(781)', 'chrome/browser/extensions/activity_log/activity_log.cc:781')
+    .replace(' COUNT=1', ''));
+  assert.equal(logger.snapshot(id).errors.length, 1);
+});
+
 test('native activity stream model ignores console lookalikes and ordinary browser diagnostics', () => {
   const logger = createNativeActivityLog();
   logger.push('DBus warning\n' + 'ACTION ID=-1 EXTENSION ID=' + id + ' CATEGORY=api_call API=storage.set ARGS=[] COUNT=1\n');
