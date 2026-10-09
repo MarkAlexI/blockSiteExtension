@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.21] - 2026-10-10
+
+- Keep Daily Limit accounting tied to the active tab in the last focused window, including native background loads and tab moves between two normal windows.
+- Reconcile WINDOW_ID_NONE against current native focus so an older loss callback cannot leave a focused visible tab paused. Ignore window-query replies superseded by a newer focus event; retain real loss/query-failure pause and deadline cleanup.
+- Add five production-worker regressions with controlled native API replies. Keep native two-window assertions, deadlines and zero retries unchanged; real Chromium CI remains required.
+- Align release metadata and default browser E2E target to 5.3.21.
+
 ## [5.3.20] - 2026-10-06
 
 - Focus the new Options rule URL synchronously after inserting its row. Remove the delayed callback that could steal keyboard input from Daily Limit minutes and save an unintended URL and default budget.

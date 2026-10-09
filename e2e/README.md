@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.20**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.21**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -637,3 +637,39 @@ midnight або idle worker unload. Firefox macOS/Android та native Edge
 ```bash
 xvfb-run -a npx playwright test multi-window-native.spec.mjs
 ```
+
+
+## Native window-focus recovery та release 5.3.21
+
+На `cf74c3bd05f9a18020ec0a0012e2553fedf4fbc3`
+[run 37993856473](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37993856473)
+має **40 passed / 1 failed**, retries 0. Падає лише новий native сценарій
+двох вікон після першої успішної фази: A витрачає 2 секунди, B не
+витрачає нічого. Native history далі має focus B → WINDOW_ID_NONE.
+Production worker записує segment B і за 1 ms очищає його; фінальний
+native snapshot через 15 секунд має B window/document focus, visible
+document та порожні assignmentKeys. Отримано повні job logs, native
+multi-window/owner/state вкладення та browser trace. Fresh install, CDP
+і native localization пройшли; це не launch/setup blocker.
+
+WINDOW_ID_NONE handler тепер читає поточні `windows.getAll()` flags.
+Якщо браузерне вікно сфокусоване, tracker resamples поточну вкладку;
+якщо жодне не сфокусоване або query впав, pause і deadline cleanup
+зберігаються. Sequence fence відхиляє відповідь цього query, якщо під
+час очікування вже надійшла новіша focus подія. API callbacks не
+підміняються, немає polling/debounce/retry або corrective E2E intent.
+
+П'ять worker regressions використовують production worker і контрольовані
+API replies: NONE після gain без transient pause; справжня втрата фокусу
+при visible документах; запізнілі NONE replies після нового gain та
+нової loss; query failure. Перша регресія червона на незміненому worker
+цієї бази й зелена з виправленням. Native сценарій, його assertions та
+timeouts незмінні; список залишається 41 test у 13 файлах.
+
+Версія узгоджена як SemVer patch **5.3.21** у manifest/version_name, package,
+source badge, changelog та поточній E2E цілі. `target-version.mjs` читає
+manifest і автоматично дає новий default. Старі докази прив'язані до
+початкових SHA/version. Local AF_UNIX EPERM заважає native Chromium запуску,
+тому виправлення потребує повторного реального CI; model green не є
+Chromium native green. Причину незвичного browser callback order
+артефакти не встановлюють, і workaround для конкретного WM не додається.

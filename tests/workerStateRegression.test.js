@@ -1387,3 +1387,111 @@ for (const action of ['clear', 'replace']) {
     }, { local, supportsWindows: false });
   });
 }
+
+async function withNativeWindowFocus(callback) {
+  const probes = [];
+  const rules = [makeDailyLimitRule(21, 'general', { blockURL: 'window-a.example', minutes: 1 }),
+    makeDailyLimitRule(22, 'general', { blockURL: 'window-b.example', minutes: 2 })];
+  await withWorker(async ({ api }) => {
+    api.windowValues = [{ id: 1, focused: false }, { id: 2, focused: true }];
+    api.windows.getAll = async () => structuredClone(api.windowValues);
+    api.tabs.values = [
+      { id: 11, windowId: 1, active: true, url: 'https://window-a.example/' },
+      { id: 22, windowId: 2, active: true, url: 'https://window-b.example/' }
+    ];
+    api.tabs.query = async query => {
+      const focused = api.windowValues.find(window => window.focused)?.id ?? 2;
+      return structuredClone(api.tabs.values.filter(tab => !query.lastFocusedWindow || tab.windowId === focused));
+    };
+    const focus = id => api.windows.onFocusChanged.listeners[0](id);
+    await focus(2);
+    assert.deepEqual(api.storage.local.data.dailyRuleUsage.lastSample.assignmentKeys, ['22:general']);
+    const history = [];
+    const set = api.storage.local.set.bind(api.storage.local);
+    api.storage.local.set = async values => {
+      await set(values);
+      if (values.dailyRuleUsage) history.push(structuredClone(values.dailyRuleUsage));
+    };
+    await callback({ api, focus, history, probes });
+  }, { local: { rules, activeRuleListId: 'general', lastCheck: Date.now(),
+    dailyRuleUsage: { version: 2, date: getLocalDateKey(),
+      usageSeconds: { '21:general': 40, '22:general': 60 }, lastSample: null } },
+  scripting: { executeScript: async details => {
+    probes.push(details.target.tabId);
+    return [{ frameId: 0, result: { visibilityState: 'visible', hidden: false, hasFocus: true } }];
+  } } });
+}
+
+test('native window NONE after gain preserves the current focused segment and deadline', { timeout: 5000 }, async () => {
+  await withNativeWindowFocus(async ({ api, focus, history, probes }) => {
+    const deadline = structuredClone(api.alarmValues.get('daily_limit_deadline'));
+    const before = structuredClone(api.storage.local.data.dailyRuleUsage);
+    const probeCount = probes.length;
+    await focus(api.windows.WINDOW_ID_NONE);
+    assert.deepEqual(api.storage.local.data.dailyRuleUsage.lastSample.assignmentKeys, ['22:general']);
+    assert.deepEqual(probes.slice(probeCount), [22], 'production tracker completed a fresh visibility probe for current native focus');
+    for (const state of history) assert.deepEqual(state.lastSample.assignmentKeys, ['22:general'], 'no transient stale pause');
+    const after = api.storage.local.data.dailyRuleUsage;
+    assert.equal(after.usageSeconds['21:general'], before.usageSeconds['21:general']);
+    const gain = after.usageSeconds['22:general'] - before.usageSeconds['22:general'];
+    assert.ok(gain >= 0 && gain <= Math.floor((after.lastSample.timestamp - before.lastSample.timestamp) / 1000),
+      'only actual focused elapsed time can change the current budget');
+    assert.deepEqual(api.alarmValues.get('daily_limit_deadline'), deadline);
+  });
+});
+
+test('native window NONE genuinely pauses visible documents when no browser window is focused', { timeout: 5000 }, async () => {
+  await withNativeWindowFocus(async ({ api, focus }) => {
+    api.windowValues.forEach(window => { window.focused = false; });
+    await focus(api.windows.WINDOW_ID_NONE);
+    assert.deepEqual(api.storage.local.data.dailyRuleUsage.lastSample.assignmentKeys, []);
+    assert.equal(api.alarmValues.has('daily_limit_deadline'), false);
+  });
+});
+
+test('native window delayed NONE query cannot pause a newer focus gain', { timeout: 5000 }, async () => {
+  await withNativeWindowFocus(async ({ api, focus, history }) => {
+    const queried = createDeferred(), reply = createDeferred();
+    api.windows.getAll = async () => { queried.resolve(); return reply.promise; };
+    const older = focus(api.windows.WINDOW_ID_NONE);
+    await queried.promise;
+    await focus(2);
+    const afterGain = history.length;
+    const deadline = structuredClone(api.alarmValues.get('daily_limit_deadline'));
+    reply.resolve([{ id: 1, focused: false }, { id: 2, focused: false }]);
+    await older;
+    assert.deepEqual(api.storage.local.data.dailyRuleUsage.lastSample.assignmentKeys, ['22:general']);
+    assert.equal(history.length, afterGain, 'superseded query performs no storage write');
+    assert.deepEqual(api.alarmValues.get('daily_limit_deadline'), deadline);
+  });
+});
+
+test('native window delayed NONE query cannot resume after a newer genuine focus loss', { timeout: 5000 }, async () => {
+  await withNativeWindowFocus(async ({ api, focus, history }) => {
+    const queried = createDeferred(), reply = createDeferred();
+    let calls = 0;
+    api.windows.getAll = async () => {
+      if (++calls === 1) { queried.resolve(); return reply.promise; }
+      return [{ id: 1, focused: false }, { id: 2, focused: false }];
+    };
+    const older = focus(api.windows.WINDOW_ID_NONE);
+    await queried.promise;
+    api.windowValues.forEach(window => { window.focused = false; });
+    await focus(api.windows.WINDOW_ID_NONE);
+    const afterLoss = history.length;
+    reply.resolve([{ id: 1, focused: false }, { id: 2, focused: true }]);
+    await older;
+    assert.deepEqual(api.storage.local.data.dailyRuleUsage.lastSample.assignmentKeys, []);
+    assert.equal(history.length, afterLoss, 'superseded query cannot restore a spent segment');
+    assert.equal(api.alarmValues.has('daily_limit_deadline'), false);
+  });
+});
+
+test('native window NONE query failure safely pauses the segment and clears its deadline', { timeout: 5000 }, async () => {
+  await withNativeWindowFocus(async ({ api, focus }) => {
+    api.windows.getAll = async () => { throw new Error('Controlled native window query failure'); };
+    await focus(api.windows.WINDOW_ID_NONE);
+    assert.deepEqual(api.storage.local.data.dailyRuleUsage.lastSample.assignmentKeys, []);
+    assert.equal(api.alarmValues.has('daily_limit_deadline'), false);
+  });
+});

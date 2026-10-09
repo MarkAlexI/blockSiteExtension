@@ -1418,15 +1418,29 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
     .catch(error => logger.info('Daily limit tab activation sample failed:', error));
 });
 
-chrome.windows?.onFocusChanged?.addListener((windowId) =>
-  runAsyncHandler(ASYNC_HANDLER_OPERATIONS.WINDOW_FOCUS_CHANGED, async () => {
+let windowFocusEventSequence = 0;
+chrome.windows?.onFocusChanged?.addListener((windowId) => {
+  const sequence = ++windowFocusEventSequence;
+  return runAsyncHandler(ASYNC_HANDLER_OPERATIONS.WINDOW_FOCUS_CHANGED, async () => {
     if (windowId === chrome.windows.WINDOW_ID_NONE) {
-      await dailyLimitTracker.pause('window_focus_lost');
-      return;
+      // NONE can arrive after another window gained focus. Reconcile the
+      // current native state instead of leaving its visible segment paused.
+      let windows;
+      try {
+        windows = await chrome.windows.getAll();
+      } catch (error) {
+        logger.info('Daily limit native window focus query failed:', error);
+      }
+      // An awaited reply must not pause/resume after a newer focus event.
+      if (sequence !== windowFocusEventSequence) return;
+      if (!Array.isArray(windows) || !windows.some(window => window.focused === true)) {
+        await dailyLimitTracker.pause('window_focus_lost');
+        return;
+      }
     }
     await dailyLimitTracker.sample('window_focus_gained');
-  })
-);
+  });
+});
 
 chrome.tabs.onCreated.addListener((tab) =>
   runAsyncHandler(ASYNC_HANDLER_OPERATIONS.TAB_CREATED, async () => {
