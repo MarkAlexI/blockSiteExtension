@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { NATIVE_ACTIVITY_ARGS, createNativeActivityLog } from './native-activity.mjs';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const isInstallPage = target => target.type === 'page' &&
@@ -59,26 +60,28 @@ export async function prepareNativePages(endpoint, { waitForInstall = false, tim
   return { installObserved, keeper, closedTargets, remainingTargets: targets };
 }
 
-export function nativeChromiumArgs({ profile, port, headless, args = [] }) {
+export function nativeChromiumArgs({ profile, port, headless, args = [], activityLog = false }) {
   return [...args, `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`,
     '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check',
     '--disable-component-extensions-with-background-pages', '--disable-default-apps',
     '--no-sandbox', '--disable-dev-shm-usage', '--lang=en-US', '--window-size=1280,900',
-    ...(headless ? ['--headless=new'] : []), 'about:blank'];
+    ...(activityLog ? NATIVE_ACTIVITY_ARGS : []), ...(headless ? ['--headless=new'] : []), 'about:blank'];
 }
 
 // Launch outside Playwright so its default CDP client cannot emulate page focus.
 // Keep the fixture's explicit user-data-dir across restart.
 export async function launchNativeChromium(config) {
+  const activity = config.activityLog ? createNativeActivityLog() : null;
   const child = spawn(config.executablePath, nativeChromiumArgs(config), {
     stdio: ['ignore', 'ignore', 'pipe'], env: config.env
   });
   let failure = null, stderr = '';
   child.on('error', error => { failure = error; });
-  child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16000); });
+  child.stderr.on('data', chunk => { activity?.push(chunk); stderr = (stderr + chunk).slice(-16000); });
+  child.stderr.once('end', () => activity?.finish());
   const exited = new Promise(resolve => child.once('close', resolve));
   const endpoint = `http://127.0.0.1:${config.port}`;
-  const owner = { endpoint, async diagnostics() {
+  const owner = { endpoint, activity, async diagnostics() {
     let targets;
     try { targets = await targetsAt(endpoint); }
     catch (error) { targets = { error: String(error) }; }

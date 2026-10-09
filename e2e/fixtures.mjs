@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { launchNativeChromium, prepareNativePages, targetsAt } from './native-launch.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
+import { nativeStorageWrite, nativeWakeAlarms } from './native-activity.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,7 +114,8 @@ class ExtensionHarness {
       this.nativeOwner = await launchNativeChromium({
         executablePath: launchOptions.executablePath || chromium.executablePath(),
         profile: this.profile, port, headless: launchOptions.headless,
-        args: launchOptions.args, env: launchOptions.env
+        args: launchOptions.args, env: launchOptions.env,
+        activityLog: this.testInfo.tags.includes('@native-activity-log')
       });
       try {
         const prepared = await prepareNativePages(this.nativeOwner.endpoint, { waitForInstall: !this.installed });
@@ -192,7 +194,7 @@ class ExtensionHarness {
     });
   }
 
-  async idleUntilAlarm({ alarmName = 'update_scheduled_rules' } = {}) {
+  async idleUntilAlarm({ alarmName = 'update_scheduled_rules', batch = null } = {}) {
     expect(this.nativeOwner, 'idle observation requires an independently owned native browser').toBeTruthy();
     await this.saveTrace('before-idle-trace');
     for (const page of this.context.pages()) {
@@ -201,21 +203,40 @@ class ExtensionHarness {
     const before = await this.nativeOwner.diagnostics();
     const workerUrl = this.worker.url();
     expect(before.targets.filter(target => target.type === 'service_worker' && target.url === workerUrl)).toHaveLength(1);
-    const probe = await this.worker.evaluate(async () => {
+    const probe = await this.worker.evaluate(async batch => {
+      if (batch) {
+        for (const name of batch.names) await chrome.alarms.create(name, {
+          when: batch.when, ...(name === 'update_scheduled_rules' ? { periodInMinutes: 1 } : {})
+        });
+      }
       const token = crypto.randomUUID();
       globalThis.__bdIdleLifetime = token;
       await chrome.storage.session.set({ __bdIdleLifetime: token });
       const alarms = await chrome.alarms.getAll();
       return { token, lastApiAt: Date.now(), alarms };
-    });
+    }, batch);
     const minuteAlarm = probe.alarms.find(item => item.name === 'update_scheduled_rules');
     expect(minuteAlarm?.periodInMinutes).toBe(1);
-    const alarm = probe.alarms.find(item => item.name === alarmName);
-    expect(alarm, 'expected native wake alarm').toBeTruthy();
-    expect(alarm.scheduledTime - probe.lastApiAt, 'a full idle window before the native wake alarm').toBeGreaterThan(45_000);
-    expect(probe.alarms.filter(item => item.scheduledTime <= alarm.scheduledTime).map(item => item.name)).toEqual([alarmName]);
+    const names = batch ? batch.names : [alarmName];
+    const { alarm, wakeBefore } = nativeWakeAlarms(probe.alarms, names, probe.lastApiAt);
+    if (batch) expect(alarm.scheduledTime).toBe(batch.when);
+    let activityMarker = null;
+    if (this.nativeOwner.activity) {
+      // Wait for the browser log of this native session write as a stream
+      // boundary. No extension API polling is used here or while detached.
+      await expect.poll(() => {
+        const logged = this.nativeOwner.activity.snapshot(this.id);
+        expect(logged.errors).toEqual([]);
+        const fence = logged.events.find(event => {
+          const write = nativeStorageWrite(event);
+          return write?.area === 'session' && write.values.__bdIdleLifetime === probe.token;
+        });
+        activityMarker = fence?.sequence ?? null;
+        return activityMarker;
+      }, { timeout: 5000, message: 'native activity log observed the session fence before detach' }).not.toBeNull();
+    }
     const observation = { pid: before.pid, profile: this.profile, workerUrl,
-      initialTargets: before.targets, probe, samples: [] };
+      initialTargets: before.targets, probe, activityMarker, samples: [] };
     try {
       // connectOverCDP Browser.close closes its transport, not this native
       // launch owner. Do not close the persistent context or browser process.
@@ -225,7 +246,7 @@ class ExtensionHarness {
       observation.detachedAt = Date.now();
       observation.cycle = await observeNativeIdleWake(this.nativeOwner.endpoint, workerUrl, {
         wakeAt: alarm.scheduledTime, lastApiAt: probe.lastApiAt,
-        wakeBefore: alarmName === 'end_focus_session' ? minuteAlarm.scheduledTime : Infinity,
+        wakeBefore,
         onSample: sample => observation.samples.push(sample)
       });
       observation.after = await this.nativeOwner.diagnostics();
@@ -249,7 +270,7 @@ class ExtensionHarness {
       }));
       expect(restored).toEqual({ global: null, session: probe.token });
       observation.restored = restored;
-      return { ...observation.cycle, alarm };
+      return { ...observation.cycle, alarm, activityMarker };
     } catch (error) {
       observation.error = error.stack || String(error);
       observation.after ??= await this.nativeOwner.diagnostics();
@@ -296,12 +317,12 @@ class ExtensionHarness {
     return page;
   }
 
-  async state() {
-    return this.worker.evaluate(async () => {
-      const local = await chrome.storage.local.get(['rules', 'ruleLists', 'activeRuleListId', 'dailyRuleUsage', 'pendingDailyUsageRemaps', 'focusSession', 'rulesGeneration', 'ruleRevisions', 'ruleListRevisions']);
+  async state(extraLocalKeys = []) {
+    return this.worker.evaluate(async extraLocalKeys => {
+      const local = await chrome.storage.local.get(['rules', 'ruleLists', 'activeRuleListId', 'dailyRuleUsage', 'pendingDailyUsageRemaps', 'focusSession', 'rulesGeneration', 'ruleRevisions', 'ruleListRevisions', ...extraLocalKeys]);
       const { credentials, settings } = await chrome.storage.sync.get(['credentials', 'settings']);
       return { ...local, credentials, settings, dnr: await chrome.declarativeNetRequest.getDynamicRules() };
-    });
+    }, extraLocalKeys);
   }
 
   async writeLocal(values) { await this.worker.evaluate(values => chrome.storage.local.set(values), values); }

@@ -9,6 +9,11 @@
 `results.json`: Node suite, синтаксичні перевірки і `--list` не є E2E.
 Помилка запуску браузера до scenario body не підтверджує поведінку розширення.
 
+На базі `1f2acfd1ee3d0e3dbe29083303a2e0e499c30892`
+[run 37907288475](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37907288475)
+підтвердив **37 passed**, Extension CI теж зелений. Два нові native alarm
+batch сценарії нижче збільшують набір до **39**; їх виконання потребує нового CI.
+
 База `ab4c1c65223c1fd9523c1967f15b0fe91dbecd6b`: [Chromium E2E run
 37823365955](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37823365955),
 перша спроба — **36 passed**. Новий idle-сценарій нижче додає 37-й тест;
@@ -168,6 +173,74 @@ HTTP protocol-model тести з контрольованим clock не є nat
 та [DevTools attachment](https://github.com/chromium/chromium/blob/main/content/browser/devtools/service_worker_devtools_agent_host.cc).
 Історичне уточнення wOxxOm про Chrome 110 та idle timer:
 [Chromium Extensions, 7 січня 2023](https://groups.google.com/a/chromium.org/g/chromium-extensions/c/_RxghHKGQ8s).
+
+## Кілька native alarms після automatic idle unload
+
+`alarm-batch-native.spec.mjs` додає два сценарії: завершення простроченого
+хвилинного Focus без activation уже expired schedule та збереження новішої
+трихвилинної ручної Hardcore-сесії після stale completion alarm. У другому
+випадку поточна schedule occurrence має отримати один durable claim без
+заміни ручного Focus.
+
+Через справжній `chrome.alarms.create` призначається один timestamp для
+`end_focus_session`, `start_scheduled_focus` і `update_scheduled_rules`.
+Minute alarm залишається періодичним; у ручній сесії completion timestamp
+є старим alarm fixture, ранішим за її справжній end. Порядок створення між
+сценаріями різний. Assertion перевіряє три callbacks рівно один раз, але
+не вимагає конкретної послідовності доставки.
+
+Усі extension views закриваються. Після останнього setup API всі CDP clients
+від'єднуються; лише HTTP `/json/list` спостерігає natural unload і wake.
+Idle window, sustained absence, перший wake до сторонніх alarms, PID,
+профіль, global/session sentinel перевіряються тим самим native harness.
+Жодний worker listener чи production API не обгортається.
+
+Тільки нові тести вмикають browser flags `enable-extension-activity-logging`,
+`enable-extension-activity-log-testing`, `enable-logging=stderr` і
+`vmodule=activity_log=1`. Node читає browser-side `ActivityLog::LogAction`
+stream, включно з callbacks із service worker, без debugger attachment.
+Позитивні контроли мусять побачити genuine warm license alarm, UI Focus
+storage/DNR requests та native session fence перед detach. Відсутній,
+malformed, aggregated чи переповнений log є помилкою; fallback на mock
+або лише фінальний snapshot відсутній. Browser flags не додають heartbeat
+і не змінюють idle timeout; фактичний unload залишається обов'язковим.
+
+Activity log записує **API arguments**, а не успішні commits. Перевіряються
+всі спостережувані Focus/claim/budget/DNR requests у cold інтервалі;
+native storage/DNR, completion count та наступні alarms перевіряються
+окремо до будь-якого UI/status/force-sync intent. Cold snapshot виконується
+після reconnect до вже спостережуваного wake. Після цього Options/Popup
+reader та справжня blocked/allowed navigation підтверджують стан; UI read
+не має повторно активувати чи claim-ити occurrence. 840 секунд, journal,
+rules/profiles/revisions і credentials зберігаються.
+
+`native-alarm-batch` містить browser activity order, позитивні контроли та
+cold state; `native-idle-wake` — lifecycle samples і identity. Артефакти
+зберігаються також при падінні. Node protocol models перевіряють chunked
+UTF-8 log, console lookalikes, malformed/overflow history, batch timing,
+повторні deliveries, transient activation/overwrite/budget loss та DNR.
+
+```sh
+cd e2e
+xvfb-run -a npm test -- alarm-batch-native.spec.mjs
+```
+
+Це automatic idle та genuine timers; OS sleep/resume і накопичення overdue
+alarms під час сну лишаються окремою перевіркою. Усі 24 перестановки чотирьох
+alarms, включно з Daily Limit deadline, покриті окремими production-module
+API-model тестами. Runtime/source version 5.3.20 не змінено. Локальний
+AF_UNIX preflight дає EPERM; native виконання нових Chromium сценаріїв тут
+не підтверджено. Список із 39 тестів та Node check не замінюють цей CI.
+
+Первинні джерела для browser-side observer:
+
+- https://github.com/chromium/chromium/blob/main/chrome/common/chrome_switches.h
+- https://github.com/chromium/chromium/blob/main/chrome/browser/extensions/activity_log/activity_log.cc
+- https://github.com/chromium/chromium/blob/main/chrome/browser/extensions/activity_log/activity_actions.cc
+- https://github.com/chromium/chromium/blob/main/extensions/renderer/ipc_message_sender.cc
+- https://github.com/chromium/chromium/blob/main/extensions/renderer/api_activity_logger.cc
+- https://github.com/chromium/chromium/blob/main/extensions/renderer/storage_area.cc
+- https://github.com/w3c/webextensions/issues/1107
 
 ## Що перевіряється
 
