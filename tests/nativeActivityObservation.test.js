@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createNativeActivityLog, nativeStorageWrite, nativeWakeAlarms, NATIVE_ACTIVITY_ARGS } from '../e2e/native-activity.mjs';
+import { readFileSync } from 'node:fs';
+import { createNativeActivityLog, nativeStorageWrite, nativeMessageCallbacks, nativeWakeAlarms, NATIVE_ACTIVITY_ARGS } from '../e2e/native-activity.mjs';
 import { nativeChromiumArgs } from '../e2e/native-launch.mjs';
 
 const id = 'a'.repeat(32), other = 'b'.repeat(32);
@@ -126,6 +127,51 @@ test('native storage activity model distinguishes local/session writes, names an
     { area: 'session', values: { fence: 'token' } });
   for (const event of [{ ...local, category: 'api_event_callback' }, { ...local, api: 'storage.get' },
     { ...local, args: [null, {}] }]) assert.equal(nativeStorageWrite(event), null);
+});
+
+// Unmodified messaging records from run 37965406317 on
+// 85262e3fe6746c8921227906fdb783d9636e4500 (native-owner-final stderr).
+test('recorded cold-message CI history selects five native sender records without inventing payload fields', () => {
+  const logger = createNativeActivityLog();
+  logger.push(readFileSync(new URL('./fixtures/cold-message-85262e3.stderr', import.meta.url)));
+  logger.finish();
+  const extensionId = 'pbpalehnoadbccpecibdopniomfgjfid';
+  const log = logger.snapshot(extensionId);
+  assert.deepEqual(log.errors, []);
+  // Reproduce the failed predicate against the actual CI records.
+  assert.equal(log.events.filter(event => event.api === 'runtime.onMessage' &&
+    event.args?.[0]?.__bdColdToken).length, 0);
+  const callbacks = nativeMessageCallbacks(log, { extensionId, producerUrl: 'http://cold-message.bd-e2e.test/producer' });
+  assert.equal(callbacks.length, 5);
+  assert.deepEqual(callbacks.map(event => event.count), [0, 0, 0, 0, 0]);
+  assert.equal(log.events.filter(event => event.api === 'runtime.sendMessage').length, 6);
+});
+
+test('native message observation rejects other receivers, senders, URLs, categories and payload lookalikes', () => {
+  const producerUrl = 'http://cold-message.bd-e2e.test/producer';
+  const callback = { extensionId: id, api: 'runtime.onMessage', category: 'api_event_callback',
+    args: [id, producerUrl], count: 0 };
+  const unrelated = [
+    { ...callback, extensionId: other }, { ...callback, args: [other, producerUrl] },
+    { ...callback, args: [id, `${producerUrl}?other`] }, { ...callback, args: [id, null] },
+    { ...callback, category: 'api_call' }, { ...callback, api: 'runtime.sendMessage' },
+    { ...callback, args: [{ __bdColdToken: 'token', __bdColdRequest: 'pro' }] },
+    { ...callback, args: [id, producerUrl, { __bdColdToken: 'token' }] },
+    { ...callback, args: null }
+  ];
+  assert.deepEqual(nativeMessageCallbacks({ events: unrelated }, { extensionId: id, producerUrl }), []);
+  assert.deepEqual(nativeMessageCallbacks({ events: [...unrelated, callback] }, { extensionId: id, producerUrl }), [callback]);
+});
+
+test('native message observation scopes callbacks to the cold history marker', () => {
+  const producerUrl = 'http://cold-message.bd-e2e.test/producer';
+  const logger = createNativeActivityLog();
+  const input = line('runtime.onMessage', [id, producerUrl], { category: 'api_event_callback', count: 0 });
+  logger.push(input);
+  const marker = logger.snapshot(id).lastSequence;
+  logger.push(input);
+  const callbacks = nativeMessageCallbacks(logger.snapshot(id, marker), { extensionId: id, producerUrl });
+  assert.equal(callbacks.length, 1); assert.equal(callbacks[0].sequence, marker + 1);
 });
 
 test('native activity flags are opt-in for the owned browser; defaults and profile remain intact', () => {

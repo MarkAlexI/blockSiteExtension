@@ -76,6 +76,16 @@ export function nativeStorageWrite(event) {
   return area && event.args?.[0] && typeof event.args[0] === 'object' ? { area, values: event.args[0] } : null;
 }
 
+// NativeRendererMessagingService logs [sender extension ID, source URL] for
+// runtime.onMessage, not the message payload. The content packets independently
+// prove the request IDs and their first replies.
+export function nativeMessageCallbacks(log, { extensionId, producerUrl }) {
+  return log.events.filter(event => event.extensionId === extensionId &&
+    event.category === 'api_event_callback' && event.api === 'runtime.onMessage' &&
+    Array.isArray(event.args) && event.args.length === 2 &&
+    event.args[0] === extensionId && event.args[1] === producerUrl);
+}
+
 export function nativeWakeAlarms(alarms, names, lastApiAt) {
   assert.ok(names.length > 0 && new Set(names).size === names.length, 'unique native wake alarm names');
   const selected = names.map(name => {

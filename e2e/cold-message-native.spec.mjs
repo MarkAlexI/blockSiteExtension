@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { test, expect, dailyRule, SITE } from './fixtures.mjs';
 import { COLD_PAGE, COLD_SCHEDULE, coldMetadata, coldRequests, installColdCollector, injectColdSender,
   assertColdReplies, assertColdState } from './cold-message.mjs';
+import { nativeMessageCallbacks } from './native-activity.mjs';
 
 const ids = state => state.dnr.map(rule => rule.id).sort((a, b) => a - b);
 
@@ -39,25 +40,37 @@ test('first content messages cold-wake the worker with persisted paid state, sch
     await expect.poll(async () => (await alarms()).find(alarm => alarm.name === 'update_scheduled_rules')?.scheduledTime - Date.now(),
       { timeout: 65_000, intervals: [200], message: 'genuine minute tick leaves a cold-message window' }).toBeGreaterThan(55_000);
     const evidence = await e.idleUntilMessages(producer, token);
+    const activityMarker = evidence.activityMarker;
     assertColdReplies(evidence.firstReplies, before, evidence.earliestAlarm);
     // First-response assertions use the original content packets. Read only
     // native storage/DNR before any reopened reader or corrective intent.
     const after = await e.state(); assertColdState(after, before);
     expect(after.credentials).toEqual(before.credentials);
-    // Wait for stderr delivery only, without another extension API/message.
-    await expect.poll(() => e.nativeOwner.activity.snapshot(e.id).events.filter(event =>
-      event.api === 'runtime.onMessage' && event.args?.[0]?.__bdColdToken === token).length,
-    { timeout: 5000, message: 'native ActivityLog observed the five first callbacks' }).toBe(5);
-    const log = e.nativeOwner.activity.snapshot(e.id);
-    expect(log.errors).toEqual([]);
-    const callbacks = log.events.filter(event => event.api === 'runtime.onMessage' && event.args?.[0]?.__bdColdToken === token);
-    expect(callbacks.map(event => event.args[0].__bdColdRequest).sort())
-      .toEqual(['pro', 'rename', 'schedule', 'stale-generation', 'stale-revision'].sort());
-    const competing = log.events.filter(event => event.api === 'alarms.onAlarm' &&
-      event.at >= evidence.detachedAt && event.at <= evidence.firstReplies.completedAt);
-    expect(competing, 'content messages are the first wake source').toEqual([]);
-    await e.testInfo.attach('cold-first-responses-and-state', { contentType: 'application/json',
-      body: JSON.stringify({ before, after, firstReplies: evidence.firstReplies, callbacks, competing }) });
+    const source = { extensionId: e.id, producerUrl: COLD_PAGE };
+    const snapshot = () => e.nativeOwner.activity.snapshot(e.id, activityMarker);
+    try {
+      // Wait for stderr delivery only, without another extension API/message.
+      // Native messaging records sender metadata; first content packets above
+      // already assert all five request IDs, payloads and exact first replies.
+      await expect.poll(() => nativeMessageCallbacks(snapshot(), source).length,
+        { timeout: 5000, message: 'native ActivityLog observed the five first callbacks' }).toBe(5);
+      const log = snapshot();
+      expect(log.errors).toEqual([]);
+      const callbacks = nativeMessageCallbacks(log, source);
+      expect(callbacks).toHaveLength(5);
+      expect(callbacks.map(event => event.count), 'five raw native message records').toEqual([0, 0, 0, 0, 0]);
+      const competing = log.events.filter(event => event.category === 'api_event_callback' &&
+        event.api === 'alarms.onAlarm' && (event.sequence < callbacks[0].sequence ||
+          (event.at >= evidence.detachedAt && event.at <= evidence.firstReplies.completedAt)));
+      expect(competing, 'content messages are the first wake source').toEqual([]);
+    } finally {
+      // Include the complete scoped history even if the activity assertion
+      // fails; the owner's stderr tail may otherwise omit the relevant records.
+      const activity = snapshot();
+      await e.testInfo.attach('cold-first-responses-and-state', { contentType: 'application/json',
+        body: JSON.stringify({ before, after, firstReplies: evidence.firstReplies, activityMarker,
+          activity, callbacks: nativeMessageCallbacks(activity, source) }) });
+    }
     const restoredOptions = await e.openOptions(); const restoredPopup = await e.openPopup();
     await expect(restoredOptions.locator('#focus-session-banner')).toBeVisible();
     await expect(restoredPopup.locator('#focus-active-view')).toBeVisible();

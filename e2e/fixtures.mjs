@@ -300,8 +300,22 @@ class ExtensionHarness {
       return { token, lastApiAt: Date.now(), alarms };
     }, token);
     const earliestAlarm = Math.min(...probe.alarms.map(alarm => alarm.scheduledTime));
-    const evidence = { pid: before.pid, profile: this.profile, workerUrl, producer, probe, earliestAlarm, samples: [] };
+    const evidence = { pid: before.pid, profile: this.profile, workerUrl, producer, probe, earliestAlarm,
+      activityMarker: null, samples: [] };
     try {
+      // Use the existing native session write as the history boundary, rather
+      // than Node receipt time: buffered warm alarm records must stay warm.
+      // This polls stderr only and adds no extension API or readiness message.
+      await expect.poll(() => {
+        const log = this.nativeOwner.activity.snapshot(this.id);
+        expect(log.errors).toEqual([]);
+        const fence = log.events.find(event => {
+          const write = nativeStorageWrite(event);
+          return write?.area === 'session' && write.values.__bdIdleLifetime === probe.token;
+        });
+        evidence.activityMarker = fence?.sequence ?? null;
+        return evidence.activityMarker;
+      }, { timeout: 5000, message: 'native activity log observed the cold session fence before detach' }).not.toBeNull();
       await this.nativeBrowser.close();
       this.context = this.nativeBrowser = this.worker = null; this.options = [];
       evidence.detachedAt = Date.now();

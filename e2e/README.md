@@ -519,9 +519,17 @@ onStartup overlap окремо наведено контрольований pro
 Від’єднано всі Playwright/CDP transports. HTTP /json/list пасивно підтверджує
 worker absence; далі єдиний page-only WebSocket виконує Runtime.evaluate у вже
 існуючому HTTP producer. Browser/worker CDP під’єднуються лише після всіх п’яти
-first replies. Native ActivityLog підтверджує п’ять runtime.onMessage callbacks
-із token і відсутність alarm callbacks у cold interval; raw log не є доказом
-storage/DNR commit, які перевіряються окремим native read.
+first replies. Native ActivityLog підтверджує рівно п’ять runtime.onMessage
+записів після початку cold observation із точними sender extension ID та URL
+producer. Chromium логування messaging не містить payload/token/request ID:
+їх перевіряють початкові content packets. Перевіряється відсутність alarm
+callbacks перед першою message-подією за native sequence, навіть якщо stderr
+доставлено пізніше, та у спостережуваному cold interval до завершення replies.
+Межа історії — native запис уже наявного session sentinel перед detach, а не
+час отримання stderr у Node; запізнілі warm записи не стають cold подіями.
+Raw log не є доказом storage/DNR commit, які перевіряються окремим native read.
+Повний scoped ActivityLog додається до cold-first-responses-and-state також
+при падінні ActivityLog assertion, незалежно від обрізаного stderr tail.
 
 На цей сценарій відведено 210 seconds: fresh install maintenance, справжній
 minute tick, native idle, first replies і readers. Existing deadlines не змінено.
