@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.21**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.22**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -673,3 +673,40 @@ manifest і автоматично дає новий default. Старі док�
 тому виправлення потребує повторного реального CI; model green не є
 Chromium native green. Причину незвичного browser callback order
 артефакти не встановлюють, і workaround для конкретного WM не додається.
+
+
+## Native undo-close tab (45), release 5.3.22
+
+Поточна закомічена база `5baa9fe79f17a2e44e6f8319b74de9d8980bc7ea`,
+[run 37998704774](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/37998704774),
+має **41 native passed** на 5.3.21. Цей доказ не переноситься на 5.3.22.
+
+Новий Linux/X11 сценарій використовує XTEST через `xdotool`: справжні
+Ctrl+W та Ctrl+Shift+T. Перед вводом desktop title має містити унікальний
+nonce вибраного fixture document, а active window перевіряється повторно.
+Відновлення не викликає tabs.create, sessions API або corrective intent.
+Єдина runtime reconciliation — початкова підготовка fixture.
+
+Перевірки: новий native tab ID та document timeOrigin, один observed created
+event; spent budget не зникає в жодному observed storage write; вкладка
+не витрачає budget, поки закрита; foreground відновлюється; сумарний usage
+не перевищує одну native elapsed timeline. Deadline відповідає збереженому
+budget, реально завершує його, встановлює DNR і закриває restored tab.
+Options/Popup reader показують точний остаточний usage; exhausted навігація
+блокується, друге правило залишається allowed, revisions/Focus не змінюються.
+Popup тут — reader tab, не додаткова toolbar-перевірка.
+
+Це undo-close у тому самому browser process, **не startup session restore**,
+OS sleep, mobile чи macOS/Windows. `nativeTabShortcutBackend` перевіряє
+Linux DISPLAY, xdotool та XTEST до launch/body; backend failure — setup
+blocker. Native API delivery/час/foreground не підміняються. Keyboard
+delivery виконується один раз без retries. Unit protocol models перевіряють
+відмову на чужому desktop title, зміні active window та недоступному backend;
+вони не є доказом native browser restore.
+
+CI встановлює xdotool поряд з Openbox/x11-utils. Native список після патча
+має 42 tests; повний 5.3.22 CI залишається потрібним.
+
+```bash
+xvfb-run -a npx playwright test session-restore-native.spec.mjs
+```

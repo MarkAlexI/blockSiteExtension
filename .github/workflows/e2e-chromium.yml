@@ -30,7 +30,7 @@ jobs:
         working-directory: e2e
         run: npx playwright install --with-deps chromium
       - name: Install native window manager
-        run: sudo apt-get install -y openbox x11-utils
+        run: sudo apt-get install -y openbox x11-utils xdotool
       - name: Build and unpack the CWS package
         run: |
           npm run package:cws
