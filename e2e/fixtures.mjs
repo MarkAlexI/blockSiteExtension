@@ -12,6 +12,7 @@ import { extensionWorker } from './extension-worker.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
+import { frameFixtureHtml } from './frame-fixture.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.resolve(process.env.BD_EXTENSION_PATH || path.join(directory, '..'));
@@ -195,7 +196,7 @@ class ExtensionHarness {
       }
       if (url.protocol === 'http:' && url.hostname.endsWith('.bd-e2e.test')) {
         return route.fulfill({ status: 200, contentType: 'text/html', body:
-          '<!doctype html><html><head><title>BD E2E fixture</title></head><body><h1>BD E2E fixture</h1><p>Local synthetic page.</p></body></html>' });
+          frameFixtureHtml(url.href) || '<!doctype html><html><head><title>BD E2E fixture</title></head><body><h1>BD E2E fixture</h1><p>Local synthetic page.</p></body></html>' });
       }
       if (['chrome-extension:', 'about:', 'data:'].includes(url.protocol)) return route.continue();
       // No production requests, purchases or real licenses are involved.

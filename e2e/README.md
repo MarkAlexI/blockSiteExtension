@@ -739,3 +739,40 @@ Runtime змінено, тому manifest/version_name, package і source metada
 узгоджено на patch **5.3.23**. Native suite залишається 42 tests;
 assertions/timeouts/retries не змінено. Local AF_UNIX EPERM у цьому хості
 блокує Chromium launch, тому підтвердження виправлення потрібне в новому CI.
+
+
+## Native nested frames (46), test-only addition at 5.3.23
+
+A genuine HTTP parent embeds a Basic-blocked cross-origin document, which in
+turn embeds a Daily Limit document. Native `scripting.executeScript` results
+prove three distinct frame IDs, main frame 0, actual document URLs, DOM parent
+relationships and parent referrer origins. Child result order and specific
+child IDs are browser-dependent. Default referrer policy is retained; full
+cross-origin referrer paths are not required.
+
+A real child navigation preserves its frame ID and the parent's document.
+Initial load, child navigation and a parent reload preserve usage 40 in every
+observed usage write and the final snapshot, without a foreground deadline.
+The identical Daily Limit URL then becomes top-level: real foreground time is
+charged, its native deadline alarm is observed, DNR installs the exhausted rule
+and cleanup removes the top-level tab. No corrective intent, synthetic event,
+Date shim, alarm override or API hold is used after initial fixture reconciliation.
+With Basic and exhausted Daily Limit DNR active, all three embedded HTTP
+documents still load, while the two top-level navigations reach blocked.html
+with exact reasons. The parent survives, usage and revisions are retained,
+and Options/Popup readers show the exhausted budget. Popup is a reader tab.
+
+This checks DNR main/sub-frame behavior and tab accounting, not
+`webRequest.type`, `webRequest.parentFrameId`, worker idle, OS sleep, startup
+session restore, minimum versions, mobile, macOS or native Edge. Production
+modules, permissions, version, existing assertions, deadlines and retries are
+unchanged. This new deadline phase starts with 20 seconds remaining and has
+its own 35-second observation bound, as in the existing native window coverage.
+The only additional HTTP responses are local synthetic documents.
+
+Current native list: **43 scenarios**; listing is not execution.
+
+```bash
+cd e2e
+npx playwright test frames-native.spec.mjs --headed
+```

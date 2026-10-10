@@ -2,7 +2,7 @@ import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs', 'readers.spec.mjs', 'stale.spec.mjs', 'focus.spec.mjs', 'popup-native.spec.mjs', 'calendar.spec.mjs', 'day-boundary.spec.mjs', 'scheduled-expiry.spec.mjs', 'idle-native.spec.mjs', 'alarm-batch-native.spec.mjs', 'cold-message-native.spec.mjs', 'multi-window-native.spec.mjs', 'session-restore-native.spec.mjs'],
+  testMatch: ['chromium.spec.mjs', 'recovery.spec.mjs', 'readers.spec.mjs', 'stale.spec.mjs', 'focus.spec.mjs', 'popup-native.spec.mjs', 'calendar.spec.mjs', 'day-boundary.spec.mjs', 'scheduled-expiry.spec.mjs', 'idle-native.spec.mjs', 'alarm-batch-native.spec.mjs', 'cold-message-native.spec.mjs', 'multi-window-native.spec.mjs', 'session-restore-native.spec.mjs', 'frames-native.spec.mjs'],
   fullyParallel: false,
   workers: 1,
   // Visibility/accounting scenarios require a browser with a real tab strip.
