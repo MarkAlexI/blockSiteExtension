@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.23] - 2026-10-10
+
+- Preserve in-flight Daily Limit tab cleanup when a license check confirms unchanged access. Keep early cancellation for actual Pro transitions and storage invalidation for changed credentials.
+- Add production-worker regressions for unchanged Pro, Free and Legacy verification after DNR applies. Compare storage values structurally so object key order cannot invent a change event in the model.
+- Align runtime release metadata to 5.3.23. Keep all 42 native Chromium scenarios, their assertions, deadlines and zero retries unchanged.
+
 ## [5.3.22] - 2026-10-10
 
 - Add a native Linux/X11 undo-close tab scenario using real browser Ctrl+W and Ctrl+Shift+T shortcuts. Verify retained Daily Limit budgets, foreground accounting, alarms, expiry cleanup, Options/Popup reader values and DNR navigation.

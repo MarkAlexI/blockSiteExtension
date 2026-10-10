@@ -1349,7 +1349,10 @@ function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerificatio
         return ProManager.getCredentials();
       }
 
-      invalidateBlockingDecisions();
+      // An unchanged verification has no storage change to renew a cancelled
+      // DNR cleanup. Only preempt it when Pro status is actually changing.
+      // Other credential changes invalidate through storage.onChanged.
+      if (previousCredentials.isPro !== isPro) invalidateBlockingDecisions();
       logger.log(`Service worker received Pro status update: ${isPro}`);
       const updatedCredentials = await ProManager.setProStatusFromWorker(isPro, subscriptionData);
       const shouldContinue = () => transitionGeneration === proStatusTransitionGeneration &&

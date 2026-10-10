@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.22**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.23**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -710,3 +710,32 @@ CI встановлює xdotool поряд з Openbox/x11-utils. Native спис
 ```bash
 xvfb-run -a npx playwright test session-restore-native.spec.mjs
 ```
+
+
+## Unchanged license verification during Daily Limit cleanup, release 5.3.23
+
+Actual [run 38037081263](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/38037081263)
+на `6b36134dd3399cf7abef723e530aa6ced229c5ac` завершився **41/42**.
+Новий native undo-close (45) пройшов. Двовіконний сценарій (44) досяг
+usage 60 і DNR `[21]`, але виснажена вкладка залишилася відкритою.
+Job log, native-multi-window attachment та browser trace отримано.
+Trace фіксує verification response `{"isPro":true}` одночасно з crossing 60.
+
+Production worker безумовно інвалідовував blocking decision перед
+оновленням Pro. Якщо credentials не змінилися, storage event не забезпечував
+новий DNR drain: поточний guarded cleanup скасовувався після застосування DNR.
+Три контрольовані API-wait регресії відтворюють це для Pro/Free/Legacy.
+Виправлення зберігає ранню інвалідацію, коли `isPro` справді змінюється;
+інші credential changes і далі інвалідовуються через storage.onChanged.
+Незмінне підтвердження доступу не додає нових запитів sync чи сканувань вкладок.
+
+Worker model порівнює storage values структурно: перестановка object keys
+не створює уявного event. Ідентичні credentials і відсутність credential event
+є явними передумовами регресій. Це production modules із контрольованим API
+reply, не заміна реального native CI. Firefox може доставляти onChanged без
+зміни значення; Chromium-падіння не доводить аналогічну Firefox-регресію.
+
+Runtime змінено, тому manifest/version_name, package і source metadata
+узгоджено на patch **5.3.23**. Native suite залишається 42 tests;
+assertions/timeouts/retries не змінено. Local AF_UNIX EPERM у цьому хості
+блокує Chromium launch, тому підтвердження виправлення потрібне в новому CI.
