@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.23**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.24**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
