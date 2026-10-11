@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.24**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.25**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -776,3 +776,7 @@ Current native list: **43 scenarios**; listing is not execution.
 cd e2e
 npx playwright test frames-native.spec.mjs --headed
 ```
+
+## Pro feedback geometry (scenario 47)
+
+The native Options scenario opens Pro, switches the fixture through Pro and Free and broadcasts the status from the actual background context. It then rejects one native verification request through the existing isolated HTTP fixture and checks message geometry in 340 px and 640 px Pro columns. A MutationObserver and every rendered animation frame retain the full observed history; a later successful layout cannot erase an earlier clipped message. Rules, usage, credentials, retry input and collapsed/inert state are also checked. Firefox grants its real authentication-info consent first. Column resizing is a desktop layout check, not Firefox Android or a mobile platform run.

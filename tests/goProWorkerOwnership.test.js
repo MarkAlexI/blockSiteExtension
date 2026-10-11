@@ -53,7 +53,8 @@ async function withGoProPage({
   });
   const statusMessages = [];
   const workerRequests = [];
-  api.runtime.onMessage = { addListener() {} };
+  const statusListeners = [];
+  api.runtime.onMessage = { addListener(listener) { statusListeners.push(listener); } };
   api.runtime.sendMessage = (request, respond) => {
     workerRequests.push(structuredClone(request));
 
@@ -179,6 +180,10 @@ async function withGoProPage({
         api,
         document,
         wrapper,
+        emitStatusChanged: async () => {
+          for (const listener of statusListeners) listener({ type: 'pro_status_changed' });
+          await new Promise(resolve => setImmediate(resolve));
+        },
         toggle,
         chevron,
         flushAnimationFrames: () => { for (const frame of animationFrames.splice(0)) frame(); },
@@ -763,5 +768,126 @@ test('logout is available for a retained inactive key and stops its local recove
     assert.equal(api.storage.sync.data.credentials.licenseKey, null);
     assert.equal(accountActions.hidden, true);
     assert.equal(document.getElementById('pro-activate-view').hidden, false);
+  });
+});
+
+test('Pro status refresh leaves an open panel free to grow without another transition', async () => {
+  await withGoProPage({}, async ({ api, toggle, wrapper, emitStatusChanged, document }) => {
+    await toggle.dispatch('click');
+    await wrapper.dispatch('transitionend', { propertyName: 'max-height' });
+    api.storage.sync.data.credentials = { isPro: false, licenseKey: 'BD-RETAINED' };
+    await emitStatusChanged();
+    assert.equal(document.getElementById('pro-suspended-view').hidden, false);
+    assert.equal(wrapper.style.maxHeight, 'none');
+    assert.equal(wrapper.inert, false);
+  });
+});
+
+test('empty-key feedback removes the opening height limit before the submit handler returns', async () => {
+  await withGoProPage({}, async ({ toggle, wrapper, form, input, message }) => {
+    await toggle.dispatch('click');
+    input.focus();
+    await form.dispatch('submit');
+    assert.equal(message.textContent, 'pleaseenterkey');
+    assert.equal(message.className, 'error-message show');
+    assert.equal(wrapper.style.maxHeight, 'none');
+    assert.equal(wrapper.classList.contains('open'), true);
+    assert.equal(wrapper.inert, false);
+  });
+});
+
+test('pending verification and its failure both keep feedback outside any opening height limit', async () => {
+  let releaseVerification;
+  const pendingResponse = new Promise(resolve => { releaseVerification = resolve; });
+  await withGoProPage({ fetchHandler: () => pendingResponse }, async ({
+    toggle, wrapper, form, input, submit, message, requests
+  }) => {
+    await toggle.dispatch('click');
+    input.value = 'BD-INVALID';
+    const submitted = form.dispatch('submit');
+    try {
+      assert.equal(message.textContent, 'checking');
+      assert.equal(wrapper.style.maxHeight, 'none');
+      assert.equal(submit.disabled, true);
+    } finally {
+      releaseVerification({ ok: false, status: 404, json: async () => ({ error: 'Invalid key' }) });
+      await submitted;
+    }
+    assert.equal(requests.length, 1);
+    assert.equal(message.textContent, 'subscriptionnotfound');
+    assert.equal(message.className, 'error-message show');
+    assert.equal(wrapper.style.maxHeight, 'none');
+    assert.equal(wrapper.inert, false);
+    assert.equal(submit.disabled, false);
+    assert.equal(input.value, 'BD-INVALID');
+  });
+});
+
+test('manual status success and failure leave feedback and an open panel free to resize', async () => {
+  for (const workerResponse of [
+    { success: true, isPro: true, syncPending: true },
+    { success: false, error: 'A long service failure description' }
+  ]) {
+    await withGoProPage({ licenseKey: 'BD-RETAINED', workerResponse }, async ({
+      toggle, wrapper, forceSync, message
+    }) => {
+      await toggle.dispatch('click');
+      await forceSync.dispatch('click');
+      assert.match(message.textContent, workerResponse.success ? /problockingsyncpending/ : /syncfailed/);
+      assert.equal(wrapper.style.maxHeight, 'none');
+      assert.equal(wrapper.classList.contains('open'), true);
+      assert.equal(wrapper.inert, false);
+    });
+  }
+});
+
+test('logout success and failure keep their feedback visible after changing license views', async () => {
+  for (const workerResponse of [{ success: true }, { success: false, error: 'Worker unavailable' }]) {
+    await withGoProPage({ isPro: true, workerResponse }, async ({ toggle, wrapper, logout, message }) => {
+      await toggle.dispatch('click');
+      await wrapper.dispatch('transitionend', { propertyName: 'max-height' });
+      await logout.dispatch('click');
+      assert.equal(message.textContent, workerResponse.success ? 'loggedoutsuccess' : 'loggedouterror');
+      assert.equal(wrapper.style.maxHeight, 'none');
+      assert.equal(wrapper.classList.contains('open'), true);
+    });
+  }
+});
+
+test('a late activation failure cannot reopen a panel the user closed while verification was pending', async () => {
+  let releaseVerification;
+  const pendingResponse = new Promise(resolve => { releaseVerification = resolve; });
+  await withGoProPage({ fetchHandler: () => pendingResponse }, async ({
+    toggle, wrapper, form, input, message, flushAnimationFrames
+  }) => {
+    await toggle.dispatch('click');
+    input.value = 'BD-PENDING';
+    const submitted = form.dispatch('submit');
+    await toggle.dispatch('click');
+    flushAnimationFrames();
+    releaseVerification({ ok: false, status: 503, json: async () => ({ error: 'Unavailable' }) });
+    await submitted;
+    assert.equal(message.textContent, 'servererror');
+    assert.equal(wrapper.style.maxHeight, '0px');
+    assert.equal(wrapper.classList.contains('open'), false);
+    assert.equal(wrapper.inert, true);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    await wrapper.dispatch('transitionend', { propertyName: 'max-height' });
+    assert.equal(wrapper.style.maxHeight, '0px');
+    await toggle.dispatch('click');
+    await wrapper.dispatch('transitionend', { propertyName: 'max-height' });
+    assert.equal(wrapper.style.maxHeight, 'none');
+    assert.equal(message.textContent, 'servererror');
+  });
+});
+
+test('Pro status refresh does not expand a closed inert panel', async () => {
+  await withGoProPage({}, async ({ api, wrapper, toggle, emitStatusChanged, document }) => {
+    api.storage.sync.data.credentials = { isPro: true, licenseKey: 'BD-ACTIVE' };
+    await emitStatusChanged();
+    assert.equal(document.getElementById('pro-active-view').hidden, false);
+    assert.equal(wrapper.style.maxHeight, '0px');
+    assert.equal(wrapper.inert, true);
+    assert.equal(toggle.getAttribute('aria-expanded'), null);
   });
 });
