@@ -770,7 +770,7 @@ unchanged. This new deadline phase starts with 20 seconds remaining and has
 its own 35-second observation bound, as in the existing native window coverage.
 The only additional HTTP responses are local synthetic documents.
 
-Current native list: **43 scenarios**; listing is not execution.
+Native list after scenario 46: **43 scenarios**; listing is not execution.
 
 ```bash
 cd e2e
@@ -780,3 +780,63 @@ npx playwright test frames-native.spec.mjs --headed
 ## Pro feedback geometry (scenario 47)
 
 The native Options scenario opens Pro, switches the fixture through Pro and Free and broadcasts the status from the actual background context. It then rejects one native verification request through the existing isolated HTTP fixture and checks message geometry in 340 px and 640 px Pro columns. A MutationObserver and every rendered animation frame retain the full observed history; a later successful layout cannot erase an earlier clipped message. Rules, usage, credentials, retry input and collapsed/inert state are also checked. Firefox grants its real authentication-info consent first. Column resizing is a desktop layout check, not Firefox Android or a mobile platform run.
+
+## Native startup session restore (scenario 48, Chromium)
+
+Prepared against `41c13b6c543e603c0c3099ad741797b4e949079c` on 2026-10-13.
+Version remains 5.3.25: this iteration changes only tests and their harness.
+
+This is a clean whole-browser process replacement using the same disposable
+profile, rather than undo-close, a worker restart or an induced crash.
+The harness sends the native `Browser.close` command before closing any
+context, observes exit code 0 without a signal, waits eight seconds with no
+browser process, then launches with `--restore-last-session` and no startup URL.
+The dedicated restore path preserves all original targets before CDP attaches;
+the existing fresh-install barrier and other restart cleanup paths stay intact.
+
+The first phase restores the original selected and background HTTP tabs.
+The selected document has a new time origin and server-issued identity.
+A real loopback server remains available before the driver attaches, with
+native Chromium DNS mapping for the three fixture domains and `no-store`
+responses. The document identity is tied to its actual HTTP request after
+relaunch, not a recreated tab or driver-fulfilled restoration.
+Daily budgets cannot reset, charge the closed-browser interval, spend the
+background budget or count post-startup foreground twice. The actual deadline,
+native DNR, stored credentials, rules and revisions are checked.
+
+The second phase starts a real ten-minute Hardcore Focus through Popup UI.
+An unruled HTTP document is kept across a second native process replacement.
+Focus must retain the exact original end time, its native completion alarm,
+budget, DNR and Options/Popup state. Actual navigation still redirects with
+`reason=focus`. There is no seed, list activation, focus correction or
+corrective reconciliation between relaunch and the startup observations.
+The durable local marker survives; worker global and storage.session markers
+do not. Each quit gets a distinct trace, and both phases are attached as
+`native-startup-session-restore` JSON evidence.
+
+Before CDP routing is installed, the production license hostname is mapped
+to DNS failure only for this dedicated scenario; later verification uses the
+existing mock route. No real license or purchase is involved.
+
+Local preparation: full root suite **1797/1797**, extension validation and
+focused helpers **18/18**. The new native list contains **45 tests in 17 files**;
+listing is not execution. Local native execution is blocked by AF_UNIX
+`EPERM`; new browser-scenario acceptance is pending the owner's CI.
+Timeouts, retries and existing assertions are not weakened. CI must retain a
+headed desktop and the existing window manager. Firefox parity is a subsequent
+iteration after this Chromium scenario is exercised.
+
+This does not prove crash recovery, OS sleep, live midnight/DST, first-message
+registration races, every intermediate startup commit, mobile/macOS/Edge, or
+bytes of an installed signed store package.
+
+```bash
+cd e2e
+npx playwright test startup-restore-native.spec.mjs --headed
+```
+
+Commit subject:
+
+```text
+test(e2e): cover native Chromium startup session restore
+```

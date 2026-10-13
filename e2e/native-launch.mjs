@@ -16,7 +16,13 @@ export async function targetsAt(endpoint) {
 // Only called on the browser process/profile owned by this fixture. Clear the
 // restored pages before connectOverCDP: a page with an unresponsive renderer
 // must not block Playwright's page initialization. Keep one fresh blank tab.
-export async function prepareNativePages(endpoint, { waitForInstall = false, installTitle, timeout = 15_000 } = {}) {
+export async function prepareNativePages(endpoint, { waitForInstall = false, installTitle, timeout = 15_000, restoreSession = false } = {}) {
+  // A startup-restore scenario must observe Chrome's original restored tabs.
+  // Never create a keeper, close a target or reload a document on this path.
+  if (restoreSession) {
+    if (waitForInstall) throw new Error('Session restoration requires an already installed profile');
+    return { preserved: true, remainingTargets: await targetsAt(endpoint) };
+  }
   if (waitForInstall && (typeof installTitle !== 'string' || !installTitle.trim() || installTitle === 'header')) {
     throw new Error('Native Chromium install readiness requires the installed English header message');
   }
@@ -78,12 +84,13 @@ export async function prepareNativePages(endpoint, { waitForInstall = false, ins
   return { installObserved, installReady, keeper, closedTargets, remainingTargets: targets };
 }
 
-export function nativeChromiumArgs({ profile, port, headless, args = [], activityLog = false }) {
+export function nativeChromiumArgs({ profile, port, headless, args = [], activityLog = false, restoreSession = false }) {
   return [...args, `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`,
     '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check',
     '--disable-component-extensions-with-background-pages', '--disable-default-apps',
     '--no-sandbox', '--disable-dev-shm-usage', '--lang=en-US', '--window-size=1280,900',
-    ...(activityLog ? NATIVE_ACTIVITY_ARGS : []), ...(headless ? ['--headless=new'] : []), 'about:blank'];
+    ...(activityLog ? NATIVE_ACTIVITY_ARGS : []), ...(headless ? ['--headless=new'] : []),
+    ...(restoreSession ? ['--restore-last-session'] : ['about:blank'])];
 }
 
 // Launch outside Playwright so its default CDP client cannot emulate page focus.
@@ -99,7 +106,15 @@ export async function launchNativeChromium(config) {
   child.stderr.once('end', () => activity?.finish());
   const exited = new Promise(resolve => child.once('close', resolve));
   const endpoint = `http://127.0.0.1:${config.port}`;
-  const owner = { endpoint, activity, async diagnostics() {
+  const owner = { endpoint, activity, async waitForExit(timeout = 5000) {
+    let timer;
+    try {
+      await Promise.race([exited, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Native Chromium did not exit after Browser.close')), timeout);
+      })]);
+    } finally { clearTimeout(timer); }
+    return { pid: child.pid, exitCode: child.exitCode, signalCode: child.signalCode, observedAt: Date.now() };
+  }, async diagnostics() {
     let targets;
     try { targets = await targetsAt(endpoint); }
     catch (error) { targets = { error: String(error) }; }

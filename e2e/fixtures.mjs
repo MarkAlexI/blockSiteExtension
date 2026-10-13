@@ -95,7 +95,11 @@ class ExtensionHarness {
     this.installed = false;
   }
 
-  async launch({ timezone = this.timezone } = {}) {
+  async launch({ timezone = this.timezone, restoreSession = false } = {}) {
+    if (restoreSession && (!this.installed || !this.testInfo.tags.includes('@native-visibility') ||
+        this.testInfo.project.use.headless !== false)) {
+      throw new Error('Session restoration requires an installed, headed native profile');
+    }
     this.timezone = timezone;
     // A unique test profile is mandatory. Never connect to a personal browser.
     const launchOptions = {
@@ -107,6 +111,10 @@ class ExtensionHarness {
       env: timezone ? { ...process.env, TZ: timezone } : undefined,
       viewport: { width: 1280, height: 900 },
       args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`,
+        // Restored pages and startup alarms run before Playwright routes exist.
+        // This dedicated scenario cannot contact the production license host.
+        ...(this.testInfo.tags.includes('@native-startup-restore') ?
+          ['--host-resolver-rules=MAP *.bd-e2e.test 127.0.0.1, MAP blockdistraction.com ~NOTFOUND'] : []),
         ...(process.env.BD_E2E_DISABLE_GPU === '1' ? ['--disable-gpu'] : [])]
     };
     if (this.testInfo.tags.includes('@native-visibility')) {
@@ -118,7 +126,7 @@ class ExtensionHarness {
         executablePath: launchOptions.executablePath || chromium.executablePath(),
         profile: this.profile, port, headless: launchOptions.headless,
         args: launchOptions.args, env: launchOptions.env,
-        activityLog: this.testInfo.tags.includes('@native-activity-log')
+        activityLog: this.testInfo.tags.includes('@native-activity-log'), restoreSession
       });
       try {
         // --lang=en-US falls back to the installed English catalog. The real
@@ -127,7 +135,7 @@ class ExtensionHarness {
         const installTitle = this.installed ? undefined : JSON.parse(await readFile(
           path.join(extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
         const prepared = await prepareNativePages(this.nativeOwner.endpoint, {
-          waitForInstall: !this.installed, installTitle
+          waitForInstall: !this.installed, installTitle, restoreSession
         });
         await this.testInfo.attach('native-pages-before-cdp', {
           contentType: 'application/json', body: JSON.stringify(prepared)
@@ -149,7 +157,7 @@ class ExtensionHarness {
       expect(this.context, 'native default browser context').toBeTruthy();
       // Keep a blank tab while closing the install/onboarding tabs below.
       // Native headed Chrome can quit when its last browser window closes.
-      if (!this.context.pages().some(page => page.url() === 'about:blank')) await this.context.newPage();
+      if (!restoreSession && !this.context.pages().some(page => page.url() === 'about:blank')) await this.context.newPage();
     } else {
       this.context = await chromium.launchPersistentContext(this.profile, launchOptions);
     }
@@ -171,7 +179,8 @@ class ExtensionHarness {
       }).toBe(true);
     }
     for (const page of this.context.pages()) {
-      if (page.url() !== 'about:blank') await page.close();
+      if (restoreSession) page.on('pageerror', error => this.pageErrors.push(error.message));
+      else if (page.url() !== 'about:blank') await page.close();
     }
     this.installed = true;
   }
@@ -182,6 +191,7 @@ class ExtensionHarness {
     await this.context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
+      if (this.startupFixture?.owns(url)) return route.continue();
       if (url.href === VERIFY_URL) {
         if (request.method() === 'OPTIONS') return route.fulfill({ status: 204,
           headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS',
@@ -477,6 +487,27 @@ class ExtensionHarness {
     this.context = this.nativeBrowser = this.nativeOwner = null;
     this.options = [];
     await this.launch({ timezone });
+  }
+
+  async restartSession({ closedMs = 8000 } = {}) {
+    expect(this.nativeOwner, 'session restoration requires a native launch owner').toBeTruthy();
+    const before = await this.nativeOwner.diagnostics();
+    this.sessionRestartCount = (this.sessionRestartCount || 0) + 1;
+    await this.saveTrace(`before-session-restart-${this.sessionRestartCount}-trace`);
+    const command = await this.nativeBrowser.newBrowserCDPSession();
+    // Closing a persistent context first destroys its tab session. Ask Chrome
+    // to quit normally, then prove the owned process exited without a signal.
+    await command.send('Browser.close');
+    const exit = await this.nativeOwner.waitForExit();
+    expect(exit.exitCode).toBe(0); expect(exit.signalCode).toBeNull();
+    this.context = this.nativeBrowser = this.nativeOwner = this.worker = null;
+    this.options = [];
+    await new Promise(resolve => setTimeout(resolve, closedMs));
+    const launchedAt = Date.now();
+    await this.launch({ restoreSession: true });
+    const after = await this.nativeOwner.diagnostics();
+    expect(after.pid).not.toBe(before.pid);
+    return { profile: this.profile, before, exit, launchedAt, after };
   }
 
   async closeBrowser() {

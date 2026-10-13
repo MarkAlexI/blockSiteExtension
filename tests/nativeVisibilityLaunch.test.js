@@ -134,3 +134,28 @@ test('missing install completion is a setup failure, without clearing pages or r
   assert.equal(api.requests.every(request => request.url === '/json/list'), true);
   assert.deepEqual([...api.targets.values()], [blank, worker]);
 });
+
+test('native startup session restoration preserves all original targets without creating or closing any tab', async t => {
+  const active = { id: 'old-active', type: 'page', url: 'http://127.0.0.1:40000/active' };
+  const background = { id: 'old-background', type: 'page', url: 'http://localhost:40000/background' };
+  const api = await devtools(t, [active, background, worker]);
+  const result = await prepareNativePages(api.endpoint, { restoreSession: true });
+  assert.deepEqual([...api.targets.values()], [active, background, worker]);
+  assert.deepEqual(api.requests, [{ method: 'GET', url: '/json/list' }]);
+  assert.deepEqual(result.remainingTargets, [active, background, worker]);
+  assert.equal(result.preserved, true);
+});
+
+test('fresh install cannot use the startup-restore path to bypass readiness', async t => {
+  const api = await devtools(t, [blank, worker]);
+  await assert.rejects(prepareNativePages(api.endpoint, { restoreSession: true, waitForInstall: true, installTitle }),
+    /already installed profile/);
+  assert.deepEqual(api.requests, []);
+});
+
+test('native session restoration relaunches the owned profile without a replacement startup URL', () => {
+  const args = nativeChromiumArgs({ profile: '/tmp/isolated profile', port: 12345, headless: false, restoreSession: true });
+  assert.equal(args.filter(arg => arg === '--restore-last-session').length, 1);
+  assert.equal(args.includes('about:blank'), false);
+  assert.equal(args.find(arg => arg.startsWith('--user-data-dir=')), '--user-data-dir=/tmp/isolated profile');
+});
