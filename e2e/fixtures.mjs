@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { launchNativeChromium, prepareNativePages, targetsAt } from './native-launch.mjs';
+import { installNativeStartupExtension, persistentStartupArgs } from './native-install.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
 import { observeColdWorker, evaluateColdProducer } from './native-cold-message.mjs';
 import { triggerColdMessages } from './cold-message.mjs';
@@ -122,13 +123,23 @@ class ExtensionHarness {
       // held by Playwright's original session. Use the documented noDefaults
       // connection on this fixture's isolated persistent profile.
       const port = await freePort();
+      const persistentInstall = this.testInfo.tags.includes('@native-startup-restore');
       this.nativeOwner = await launchNativeChromium({
         executablePath: launchOptions.executablePath || chromium.executablePath(),
         profile: this.profile, port, headless: launchOptions.headless,
-        args: launchOptions.args, env: launchOptions.env,
+        args: persistentInstall ? persistentStartupArgs(launchOptions.args) : launchOptions.args, env: launchOptions.env,
         activityLog: this.testInfo.tags.includes('@native-activity-log'), restoreSession
       });
       try {
+        if (persistentInstall && !this.installed) {
+          this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
+            noDefaults: true, isLocal: true
+          });
+          this.startupInstallation = await installNativeStartupExtension(this.nativeBrowser, extensionPath, this.manifest.version);
+          await this.testInfo.attach('native-persistent-install', {
+            contentType: 'application/json', body: JSON.stringify(this.startupInstallation)
+          });
+        }
         // --lang=en-US falls back to the installed English catalog. The real
         // Options title proves its native translation completed; fetching or
         // replacing translations in the renderer would hide an empty bundle.
@@ -140,7 +151,7 @@ class ExtensionHarness {
         await this.testInfo.attach('native-pages-before-cdp', {
           contentType: 'application/json', body: JSON.stringify(prepared)
         });
-        this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
+        this.nativeBrowser ??= await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
           noDefaults: true, isLocal: true
         });
       } catch (error) {
@@ -165,6 +176,7 @@ class ExtensionHarness {
     const { worker, identity } = await extensionWorker(this.context, this.manifest);
     this.worker = worker;
     this.id = identity.id;
+    if (this.startupInstallation) expect(identity.id, 'same permanently registered unpacked extension').toBe(this.startupInstallation.id);
     await this.testInfo.attach('extension-worker', { contentType: 'application/json',
       body: JSON.stringify({ url: worker.url(), ...identity,
         observedWorkers: this.context.serviceWorkers().map(item => item.url()) }) });

@@ -12,10 +12,13 @@ const documentFor = (state, url) => state.documents.find(document => document.ur
 const foreground = (state, url, keys) => {
   const tab = state.tabs.find(tab => tab.url === url);
   const document = documentFor(state, url);
+  const accountingMatches = keys.length === 0 && state.dailyRuleUsage.lastSample === null
+    ? true // A new browser lifetime under Focus has no foreground budget segment.
+    : same(state.dailyRuleUsage.lastSample?.assignmentKeys, keys);
   return tab?.active && tab.status === 'complete' && document?.id &&
     document.visibility === 'visible' && document.focused &&
     state.windows.find(window => window.id === tab.windowId)?.focused &&
-    same(state.dailyRuleUsage.lastSample?.assignmentKeys, keys);
+    accountingMatches;
 };
 
 let desktop;
@@ -33,10 +36,15 @@ test('native startup session restore retains original tabs, foreground budget, b
     const read = () => e.worker.evaluate(startupSnapshot, Object.values(urls));
     async function settled(url, keys, dnr) {
       let result;
-      await expect.poll(async () => {
-        result = await read();
-        return foreground(result, url, keys) && same(result.dnr, dnr);
-      }, { message: 'original native foreground, persisted accounting and DNR settle after startup' }).toBe(true);
+      try {
+        await expect.poll(async () => {
+          result = await read();
+          return foreground(result, url, keys) && same(result.dnr, dnr);
+        }, { message: 'original native foreground, persisted accounting and DNR settle after startup' }).toBe(true);
+      } catch (error) {
+        evidence.lastFailedObservation = { url, keys, dnr, state: result };
+        throw error;
+      }
       return result;
     }
     const mark = () => e.worker.evaluate(async token => {
@@ -117,6 +125,7 @@ test('native startup session restore retains original tabs, foreground budget, b
       identity(evidence.focusBefore, evidence.focusAfter, urls.control, evidence.focusCycle);
       assert.deepEqual(evidence.focusAfter.focusSession, evidence.focusBefore.focusSession, 'Hardcore Focus retains its exact original deadline');
       assert.deepEqual(evidence.focusAfter.dailyRuleUsage.usageSeconds, evidence.focusBefore.dailyRuleUsage.usageSeconds);
+      assert.equal(evidence.focusAfter.dailyRuleUsage.lastSample, null, 'Focus cannot revive a foreground segment from the closed browser');
       assert.deepEqual(evidence.focusAfter.pendingDailyUsageRemaps, []);
       assert.equal(evidence.focusAfter.alarms.find(alarm => alarm.name === 'end_focus_session')?.scheduledTime,
         evidence.focusBefore.focusSession.focusEndTime, 'native completion alarm restored');

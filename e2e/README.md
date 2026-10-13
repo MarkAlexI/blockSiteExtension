@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.25**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.26**. Playwright: **1.62.1**, Node.js: **20+**.
 
 ## Статус перевірки
 
@@ -784,7 +784,8 @@ The native Options scenario opens Pro, switches the fixture through Pro and Free
 ## Native startup session restore (scenario 48, Chromium)
 
 Prepared against `41c13b6c543e603c0c3099ad741797b4e949079c` on 2026-10-13.
-Version remains 5.3.25: this iteration changes only tests and their harness.
+The original scenario was introduced on 5.3.25 with tests-only changes.
+The 5.3.26 correction and native acceptance status are recorded below.
 
 This is a clean whole-browser process replacement using the same disposable
 profile, rather than undo-close, a worker restart or an induced crash.
@@ -840,3 +841,46 @@ Commit subject:
 ```text
 test(e2e): cover native Chromium startup session restore
 ```
+
+
+## Startup correction 5.3.26 (2026-10-13)
+
+Base: `e37de37801648479d50f524634c4f5db78d5abb8`. Chromium run
+`38396728533` completed with 44 passed and one startup failure. Original HTTP
+URLs and new document identities survived a normal process exit, but the
+command-line extension load fired a fresh install and opened Options. Spent
+foreground usage changed from 40 to 51 seconds across an 8007 ms interval
+without a browser. Native storage dictionary order also invented a schema
+migration and replaced unchanged rule revisions.
+
+The worker now checks `storage.session.dailyLimitSession` before every elapsed
+sample. A new browser lifetime discards the old foreground segment while
+keeping spent counters and durable remaps. Worker replacement in the same
+browser retains its marker and its accounting segment. Boundary persistence
+precedes the session marker so a failed write cannot revive stale accounting.
+Firefox shares these runtime changes; its 113/114 fallback clears only the
+old segment on the explicit queued onStartup event. Native Firefox startup
+restoration is still a separate scenario.
+
+The Chromium startup fixture now omits both `--load-extension` and
+`--disable-extensions-except`. It enables Developer mode and performs one
+native directory drop in `chrome://extensions` before seeding. This invokes
+the ordinary persistent unpacked installer. The CDP `Extensions.loadUnpacked`
+method is not used: Chromium clears CDP-installed registrations on restart.
+Later launches rely solely on the same profile's saved installation. There is
+no profile-file editing, reload, new tab, focus correction or runtime intent
+between either relaunch and its observations.
+
+Dictionary field order alone can no longer trigger rules/usage migration.
+The dedicated Focus phase requires a null foreground segment after relaunch,
+unchanged budgets and the exact original Focus deadline. Nonempty foreground
+assignment keys, native visibility/focus, restored document identity, DNR and
+single-charge accounting assertions are retained. Failed polling now attaches
+its final read-only snapshot. Retries and deadlines remain unchanged.
+
+Local checks: Chromium 1814/1814 and Firefox 1810/1810 root tests, validators,
+plus expected failing controls with the old accounting/migration code. The
+Chromium list still contains 45 native tests in 17 files. Native execution is
+blocked locally by AF_UNIX EPERM. The directory-drop installer and the full
+startup scenario require the owner's next headed CI run; these root results
+are not native acceptance or proof of signed-store installation.
