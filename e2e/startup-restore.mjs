@@ -18,8 +18,8 @@ export async function createStartupFixture() {
     const documentId = randomUUID();
     requests.push({ host: url.hostname, path: url.pathname, documentId, at: Date.now() });
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    response.end(`<!doctype html><html><head><title>BD Startup Fixture</title></head>
-      <body><p>Native startup document</p><script>window.__bdStartupDocument=${JSON.stringify(documentId)}</script></body></html>`);
+    response.end(`<!doctype html><html data-bd-startup-document="${documentId}"><head><title>BD Startup Fixture</title></head>
+      <body><p>Native startup document</p></body></html>`);
   };
   const server = createServer(serve);
   const close = async () => {
@@ -59,7 +59,8 @@ export async function startupSnapshot(urls) {
   for (const tab of tabs) {
     if (!urls.includes(tab.url) || tab.discarded || tab.status !== 'complete') continue;
     const [result] = await api.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({
-      id: window.__bdStartupDocument, url: location.href, timeOrigin: performance.timeOrigin,
+      // Chrome's default isolated world shares the DOM, not page JS globals.
+      id: document.documentElement.dataset.bdStartupDocument, url: location.href, timeOrigin: performance.timeOrigin,
       visibility: document.visibilityState, focused: document.hasFocus()
     }) });
     documents.push({ tabId: tab.id, ...result.result });

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
-import { assertStartupBudget, assertStartupDeadline, createStartupFixture, startupDailyRule } from '../e2e/startup-restore.mjs';
+import { runInNewContext } from 'node:vm';
+import { assertStartupBudget, assertStartupDeadline, createStartupFixture, startupDailyRule, startupSnapshot } from '../e2e/startup-restore.mjs';
 import { doesUrlMatchBlockRule } from '../rules/urlRuleMatcher.js';
 
 function evidence() {
@@ -62,7 +63,7 @@ test('native startup HTTP fixture produces new uncached documents and accepts on
   });
   const first = await request(fixture.urls.active), body = first.body;
   assert.equal(first.status, 200); assert.equal(first.headers['cache-control'], 'no-store');
-  assert.ok(body.includes(fixture.requests[0].documentId));
+  assert.ok(body.includes(`data-bd-startup-document="${fixture.requests[0].documentId}"`));
   for (const url of [fixture.urls.background, fixture.urls.control]) {
     const response = await request(url); assert.equal(response.status, 200);
   }
@@ -78,6 +79,34 @@ test('native startup HTTP fixture produces new uncached documents and accepts on
   assert.equal(fixture.owns(new URL(fixture.urls.active.replace('http:', 'https:'))), false);
   assert.equal((await fetch(new URL('/unowned', fixture.endpoint))).status, 404);
   assert.equal(fixture.requests.length, 4);
+});
+
+test('startup snapshot reads the shared document identity from an isolated scripting world', async t => {
+  const fixture = await createStartupFixture(); t.after(() => fixture.close());
+  const response = await fetch(new URL(new URL(fixture.urls.active).pathname, fixture.endpoint));
+  const html = await response.text();
+  const id = html.match(/data-bd-startup-document="([^"]+)"/)?.[1];
+  assert.equal(id, fixture.requests[0].documentId);
+  const url = fixture.urls.active, timeOrigin = 12345;
+  const isolatedWorld = { window: {}, location: { href: url }, performance: { timeOrigin },
+    document: { documentElement: { dataset: { bdStartupDocument: id } }, visibilityState: 'visible', hasFocus: () => true } };
+  assert.equal(isolatedWorld.window.__bdStartupDocument, undefined, 'page globals are unavailable in the isolated world');
+  const get = async () => ({});
+  const chrome = { storage: { local: { get }, sync: { get }, session: { get } },
+    tabs: { query: async () => [{ id: 7, windowId: 2, url, active: true, status: 'complete', discarded: false }] },
+    windows: { getAll: async () => [{ id: 2, focused: true }] }, alarms: { getAll: async () => [] },
+    declarativeNetRequest: { getDynamicRules: async () => [] },
+    scripting: { executeScript: async ({ target, func, world }) => {
+      assert.equal(target.tabId, 7);
+      assert.deepEqual(Object.keys(target), ['tabId']);
+      assert.equal(world, undefined, 'observe the default isolated world');
+      return [{ result: runInNewContext(`(${func.toString()})()`, isolatedWorld) }];
+    } } };
+  // Serialize the actual worker observer too, so no test-only closure can
+  // supply an identity that the injected production observer cannot read.
+  const observed = await runInNewContext(`(${startupSnapshot.toString()})(urls)`, { chrome, urls: [url] });
+  assert.deepEqual(JSON.parse(JSON.stringify(observed.documents)),
+    [{ tabId: 7, id, url, timeOrigin, visibility: 'visible', focused: true }]);
 });
 
 test('startup fixture rules use the production matcher to isolate foreground, background and unruled Focus control', () => {
