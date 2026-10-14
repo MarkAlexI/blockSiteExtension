@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { nativeTabShortcutBackend } from './native-tab-shortcut.mjs';
+
+const execute = promisify(execFile);
+const dialogName = '^Select the extension directory\\.?$';
+const dialogTitle = /^Select the extension directory\.?$/;
 
 export function persistentStartupArgs(args) {
   // Chromium explicitly skips kCommandLine extensions when loading saved
@@ -8,8 +15,7 @@ export function persistentStartupArgs(args) {
   return args.filter(arg => !arg.startsWith('--load-extension=') && !arg.startsWith('--disable-extensions-except='));
 }
 
-async function waitForNativeInstallation(page, source, version, timeout) {
-  const deadline = Date.now() + timeout;
+async function waitForNativeInstallation(page, source, version, timeout, deadline) {
   const expired = () => new Error(`native installed identity did not match within ${timeout}ms`);
   for (;;) {
     const remaining = deadline - Date.now();
@@ -36,12 +42,67 @@ async function waitForNativeInstallation(page, source, version, timeout) {
   }
 }
 
-// One-time setup in the fixture's empty, owned profile. Use the actual
-// chrome://extensions directory-drop installer (kUnpacked). CDP's separate
-// Extensions.loadUnpacked is also temporary and is cleared at browser exit.
-// No runtime bytes, Preferences, storage APIs or lifecycle events are edited.
-export async function installNativeStartupExtension(browser, source, version, timeout = 15000) {
-  assert.ok(path.isAbsolute(source), 'native installation needs an absolute local extension path');
+async function selectNativeDirectory(source, timeout, deadline, desktop) {
+  const { browserPid, env, run } = desktop;
+  const command = async (args) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(`Native extension directory dialog did not appear within ${timeout}ms`);
+    return run('xdotool', args, { timeout: Math.min(3000, remaining), env });
+  };
+  let window;
+  while (!window) {
+    let matches;
+    try {
+      matches = (await command(['search', '--onlyvisible', '--all', '--pid', String(browserPid), '--name', dialogName]))
+        .stdout.trim().split(/\s+/).filter(Boolean);
+    } catch (error) {
+      if (error.code !== 1 || error.killed || error.signal) throw error;
+      matches = []; // xdotool search uses exit code 1 when no window exists yet.
+    }
+    if (matches.length > 1 || matches.some(value => !/^\d+$/.test(value))) {
+      throw new Error('Native extension directory dialog identity is ambiguous');
+    }
+    window = matches[0];
+    if (!window) await delay(Math.max(0, Math.min(100, deadline - Date.now())));
+  }
+  const owned = async () => {
+    if ((await command(['getwindowpid', window])).stdout.trim() !== String(browserPid)) {
+      throw new Error('Native extension directory dialog owner mismatch');
+    }
+    const title = (await command(['getwindowname', window])).stdout.trim();
+    if (!dialogTitle.test(title)) throw new Error('Native extension directory dialog title mismatch');
+    return title;
+  };
+  const title = await owned();
+  await command(['windowactivate', '--sync', window]);
+  const focused = async () => {
+    await owned();
+    if ((await command(['getactivewindow'])).stdout.trim() !== window) {
+      throw new Error('Native extension directory dialog focus changed before input');
+    }
+  };
+  // GTK's native SELECT_EXISTING_FOLDER dialog uses the normal Open button.
+  // XTEST input goes only to the owned dialog, once; no CDP keyboard or file
+  // chooser API can supply the browser's native path capability here.
+  await focused();
+  await command(['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a']);
+  await focused();
+  await command(['type', '--clearmodifiers', '--delay', '0', source]);
+  await focused();
+  await command(['key', '--clearmodifiers', 'alt+o']);
+  return { window, title, pid: browserPid, delivery: 'XTEST' };
+}
+
+// One-time setup in the fixture's empty, owned Linux/X11 profile. Chrome's
+// WebUI uses the native folder dialog to register a persistent kUnpacked path.
+// Protocol drag supplies renderer data, but not WebContents::GetDropData().
+// Temporary CLI/CDP installs, profile edits and runtime intents cannot replace it.
+export async function installNativeStartupExtension(browser, source, version, timeout = 15000,
+  { browserPid, platform = process.platform, env = process.env, run = execute } = {}) {
+  assert.ok(typeof source === 'string' && path.isAbsolute(source) && !/[\u0000-\u001f\u007f]/.test(source),
+    'native installation needs an absolute local extension path without control characters');
+  assert.ok(Number.isSafeInteger(browserPid) && browserPid > 0, 'native installation needs an owned Chromium process');
+  await nativeTabShortcutBackend({ platform, env, run });
   const [context] = browser.contexts();
   assert.ok(context, 'native default context exists');
   const page = await context.newPage();
@@ -50,16 +111,11 @@ export async function installNativeStartupExtension(browser, source, version, ti
   await toggle.waitFor({ state: 'visible', timeout });
   if (!await toggle.evaluate(element => element.checked)) await toggle.click();
   assert.equal(await toggle.evaluate(element => element.checked), true, 'native developer mode enabled');
-  const control = await context.newCDPSession(page);
-  try {
-    const point = await page.evaluate(() => ({ x: Math.min(200, innerWidth / 2), y: Math.min(200, innerHeight / 2) }));
-    const data = { items: [], files: [source], dragOperationsMask: 1 };
-    for (const type of ['dragEnter', 'dragOver', 'drop']) {
-      await control.send('Input.dispatchDragEvent', { type, ...point, data });
-    }
-    const installed = await waitForNativeInstallation(page, source, version, timeout);
-    assert.match(installed.id, /^[a-p]{32}$/);
-    return { method: 'chrome://extensions native directory drop', id: installed.id,
-      path: installed.path, version: installed.version, location: installed.location, state: installed.state };
-  } finally { await control.detach(); }
+  const deadline = Date.now() + timeout;
+  await page.locator('extensions-toolbar #loadUnpacked').click({ timeout });
+  const dialog = await selectNativeDirectory(source, timeout, deadline, { browserPid, env, run });
+  const installed = await waitForNativeInstallation(page, source, version, timeout, deadline);
+  assert.match(installed.id, /^[a-p]{32}$/);
+  return { method: 'chrome://extensions native Load unpacked dialog', id: installed.id,
+    path: installed.path, version: installed.version, location: installed.location, state: installed.state, dialog };
 }

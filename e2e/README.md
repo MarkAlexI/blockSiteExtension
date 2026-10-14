@@ -1,6 +1,47 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.27**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.27**. Playwright: **1.62.1**, Node.js: **22+**.
+
+## Native installer correction (2026-10-14, tests only)
+
+На `aa10457846a893b61470eda3feb11c905ea1bb90` [run 38547258363](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/38547258363)
+завершився з **44 passed / 1 failed**. Чотири попередні usage/DNR failures
+більше не виникли. Startup scenario зупинився ще до свого тіла: вкладення
+`native-cdp-setup-failure` містить `Unchecked runtime.lastError: No current drop data.`,
+лише WebUI/blank targets і жодного worker чи Options установленого розширення.
+
+Для revision Chromium `782af9cb30a53f54487e5d2e44738645a8ec457c`
+[native developerPrivate](https://github.com/chromium/chromium/blob/782af9cb30a53f54487e5d2e44738645a8ec457c/chrome/browser/extensions/api/developer_private/developer_private_functions.cc)
+читає `WebContents::GetDropData()`. [CDP Input](https://github.com/chromium/chromium/blob/782af9cb30a53f54487e5d2e44738645a8ec457c/content/browser/devtools/protocol/input_handler.cc)
+доставляє drag data renderer-у й не реєструє цей native path. Старий Node
+fixture помилково створював enabled extension record після synthetic drop.
+
+Початкова одноразова інсталяція тепер натискає справжню WebUI кнопку
+`Load unpacked`. Звичайний Linux/X11 GTK folder dialog отримує шлях CWS-package
+через XTEST із уже встановленого `xdotool`. Перевіряються PID процесу,
+однозначність діалогу, його English title та активне вікно перед кожним input.
+Немає повторного натискання Open, fallback installer або keyboard input у
+стороннє вікно. [GTK dialog Chromium](https://github.com/chromium/chromium/blob/782af9cb30a53f54487e5d2e44738645a8ec457c/ui/gtk/select_file_dialog_linux_gtk.cc)
+використовує `SELECT_EXISTING_FOLDER` і штатну кнопку Open.
+
+Window polling і installed metadata мають **спільний попередній 15-second
+deadline**. Перевірка path/version/UNPACKED/ENABLED збережена. Відсутність X11,
+XTEST або owned PID зупиняє setup; сценарій не пропускається. Dependencies
+Linux workflow уже містять `xdotool`, `x11-utils` і Openbox.
+
+Це підготовка isolated profile **до seed**. Обидва наступні relaunch, native
+visibility, session markers, original document identity, DNR, foreground
+budget і Hardcore Focus assertions лишаються незмінними. Runtime/manifest/
+версія 5.3.27, restore switches, scenario count, retries і test timeout незмінні.
+`native-persistent-install` додає evidence про dialog/PID/XTEST.
+
+Перевірено локально: **1829/1829** root tests, validator, **30/30** focused
+protocol/desktop-command model tests, syntax і 45-scenario registration.
+Старий installer провалив контрольний model із фактичним CI `No current drop data`.
+Це не виконання GTK/Chromium: local native browser blocker AF_UNIX EPERM лишається.
+Фінальне приймання потребує нового Linux headed CI без retries/skips.
+
+Текст коміту: `test(e2e): install persistent Chrome fixture through native folder dialog`.
 
 ## Ітерація 5.3.27: відновлення бюджету та DNR
 
@@ -892,10 +933,11 @@ Firefox shares these runtime changes; its 113/114 fallback clears only the
 old segment on the explicit queued onStartup event. Native Firefox startup
 restoration is still a separate scenario.
 
-The Chromium startup fixture now omits both `--load-extension` and
-`--disable-extensions-except`. It enables Developer mode and performs one
-native directory drop in `chrome://extensions` before seeding. This invokes
-the ordinary persistent unpacked installer. The CDP `Extensions.loadUnpacked`
+The 5.3.26 Chromium startup fixture omitted both `--load-extension` and
+`--disable-extensions-except`, enabled Developer mode and attempted a directory
+drop in `chrome://extensions` before seeding. The later CI run above proved
+that CDP drag lacked native DropData; the current fixture uses the ordinary
+Load unpacked folder dialog instead. The CDP `Extensions.loadUnpacked`
 method is not used: Chromium clears CDP-installed registrations on restart.
 Later launches rely solely on the same profile's saved installation. There is
 no profile-file editing, reload, new tab, focus correction or runtime intent

@@ -3,38 +3,67 @@ import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { installNativeStartupExtension, persistentStartupArgs } from '../e2e/native-install.mjs';
 
-const source = '/owned/test-extension', id = 'a'.repeat(32), version = '5.3.27';
-function fixture({ dragError = null, installedVersion = version, installedState = 'ENABLED', installAfterReads = 0, stalledRead = false } = {}) {
+const source = '/owned/test-extension with spaces', id = 'a'.repeat(32), version = '5.3.27';
+const pid = 741, dialog = '123', title = 'Select the extension directory';
+function fixture({ installedVersion = version, installedState = 'ENABLED', installAfterReads = 0,
+  stalledRead = false, missingDialog = false, windowPid = pid, changedFocus = false,
+  dialogTitle = title, ambiguousDialog = false, xtest = true, acceptError = null, searchError = null } = {}) {
   const calls = [], toggle = { checked: false }, records = [];
-  let reads = 0;
-  const sandbox = { innerWidth: 1280, innerHeight: 900,
-    chrome: { developerPrivate: { getExtensionsInfo: async () => {
-      reads++;
-      calls.push({ method: 'getExtensionsInfo' });
-      if (stalledRead) return new Promise(() => {});
-      return reads <= installAfterReads ? [] : records;
-    } } } };
-  const evaluate = (func, arg) => runInNewContext(`(${func.toString()})(arg)`, { ...sandbox, arg });
-  const control = { async send(method, args) {
-    calls.push({ method, args });
-    if (dragError) throw dragError;
-    if (args.type === 'drop') records.push({ id, version: installedVersion, path: source, location: 'UNPACKED', state: installedState });
-  }, async detach() { calls.push({ method: 'detach' }); } };
-  const page = { async goto(url) { calls.push({ method: 'goto', url }); },
-    locator(selector) { assert.equal(selector, 'extensions-toolbar #devMode'); return {
-      async waitFor() {}, async evaluate(func) { return func(toggle); }, async click() { toggle.checked = true; } }; },
-    async evaluate(func, arg) { return evaluate(func, arg); },
-    async waitForFunction(func, arg, options) {
-      assert.equal(options.timeout, 15000);
-      // Match Playwright 1.62.1: the poller checks the returned value's
-      // truthiness before a Promise is resolved. A Promise<false> stops it.
-      const value = evaluate(func, arg);
-      if (!value) throw new Error('native installed identity did not match');
-      return { async jsonValue() { return await value; } };
-    } };
-  const context = { async newPage() { return page; }, async newCDPSession(candidate) { assert.equal(candidate, page); return control; } };
-  return { browser: { contexts: () => [context] }, calls, toggle };
+  let reads = 0, dialogOpened = false, typed = null, activeReads = 0;
+  const sandbox = { chrome: { developerPrivate: { getExtensionsInfo: async () => {
+    reads++; calls.push({ method: 'getExtensionsInfo' });
+    if (stalledRead) return new Promise(() => {});
+    return reads <= installAfterReads ? [] : records;
+  } } } };
+  const page = {
+    async goto(url) { calls.push({ method: 'goto', url }); },
+    locator(selector) {
+      if (selector === 'extensions-toolbar #devMode') return {
+        async waitFor() {}, async evaluate(func) { return func(toggle); }, async click() { toggle.checked = true; }
+      };
+      assert.equal(selector, 'extensions-toolbar #loadUnpacked');
+      return { async click() { calls.push({ method: 'loadUnpackedClick' }); dialogOpened = true; } };
+    },
+    async evaluate(func, arg) {
+      return runInNewContext('(' + func.toString() + ')(arg)', { ...sandbox, arg });
+    }
+  };
+  const context = { async newPage() { return page; }, async newCDPSession() {
+    // CI stderr proves a protocol drag never registered native drop data.
+    calls.push({ method: 'newCDPSession' });
+    return { async send() { throw new Error('No current drop data.'); }, async detach() {} };
+  } };
+  const run = async (file, args, options) => {
+    calls.push({ file, args, timeout: options.timeout });
+    if (file === 'xdpyinfo') return { stdout: xtest ? 'XTEST' : 'OTHER' };
+    assert.equal(file, 'xdotool');
+    if (args[0] === 'version') return { stdout: 'xdotool version fixture' };
+    if (args[0] === 'search') {
+      if (searchError) throw searchError;
+      assert.deepEqual(args, ['search', '--onlyvisible', '--all', '--pid', String(pid), '--name', '^Select the extension directory\\.?$']);
+      if (!dialogOpened || missingDialog) throw Object.assign(new Error('no matching windows'), { code: 1 });
+      return { stdout: ambiguousDialog ? '123\n456\n' : dialog + '\n' };
+    }
+    if (args[0] === 'getwindowpid') return { stdout: String(windowPid) };
+    if (args[0] === 'getwindowname') return { stdout: dialogTitle };
+    if (args[0] === 'windowactivate') return { stdout: '' };
+    if (args[0] === 'getactivewindow') return { stdout: changedFocus && ++activeReads > 1 ? '999' : dialog };
+    if (args[0] === 'type') { typed = args.at(-1); return { stdout: '' }; }
+    if (args[0] === 'key') {
+      if (args.at(-1) === 'alt+o') {
+        if (acceptError) throw acceptError;
+        assert.equal(typed, source);
+        records.push({ id, version: installedVersion, path: source, location: 'UNPACKED', state: installedState });
+      }
+      return { stdout: '' };
+    }
+    throw new Error('Unexpected desktop command');
+  };
+  return { browser: { contexts: () => [context] }, calls, toggle,
+    desktop: { browserPid: pid, platform: 'linux', env: { DISPLAY: ':45' }, run } };
 }
+const install = (f, timeout = 15000) => installNativeStartupExtension(f.browser, source, version, timeout, f.desktop);
+const inputCalls = f => f.calls.filter(call => ['type', 'key'].includes(call.args?.[0]));
 
 test('startup launches remove both temporary command-line installation switches and retain native routing', () => {
   const args = ['--load-extension=/owned/test-extension', '--disable-extensions-except=/owned/test-extension',
@@ -42,53 +71,85 @@ test('startup launches remove both temporary command-line installation switches 
   assert.deepEqual(persistentStartupArgs(args), args.slice(2));
   assert.equal(args.length, 4, 'other native fixtures retain their original arguments');
 });
-
-test('persistent native setup uses the actual extensions directory-drop installer and checks identity', async () => {
-  const f = fixture();
-  assert.deepEqual(await installNativeStartupExtension(f.browser, source, version),
-    { method: 'chrome://extensions native directory drop', id, path: source, version, location: 'UNPACKED', state: 'ENABLED' });
+test('persistent setup selects the real owned Load unpacked folder dialog without protocol drag', async () => {
+  const f = fixture(), result = await install(f);
+  assert.equal(result.id, id); assert.equal(result.path, source);
+  assert.equal(result.version, version); assert.equal(result.location, 'UNPACKED'); assert.equal(result.state, 'ENABLED');
+  assert.equal(result.method, 'chrome://extensions native Load unpacked dialog');
+  assert.deepEqual(result.dialog, { window: dialog, title, pid, delivery: 'XTEST' });
   assert.equal(f.toggle.checked, true);
-  assert.equal(f.calls[0].url, 'chrome://extensions/');
-  const drags = f.calls.filter(call => call.method === 'Input.dispatchDragEvent');
-  assert.deepEqual(drags.map(call => call.args.type), ['dragEnter', 'dragOver', 'drop']);
-  for (const { args } of drags) assert.deepEqual(JSON.parse(JSON.stringify(args.data)),
-    { items: [], files: [source], dragOperationsMask: 1 });
-  assert.equal(f.calls.some(call => call.method === 'Extensions.loadUnpacked'), false, 'CDP temporary installs cannot substitute for the browser UI installer');
-  assert.equal(f.calls.at(-1).method, 'detach');
+  assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
+  assert.equal(f.calls.some(call => call.method === 'newCDPSession'), false);
+  assert.deepEqual(inputCalls(f).map(call => call.args), [
+    ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a'],
+    ['type', '--clearmodifiers', '--delay', '0', source],
+    ['key', '--clearmodifiers', 'alt+o']
+  ]);
 });
-
-test('native installation fails on a rejected directory drop, without falling back to a temporary extension', async () => {
-  const f = fixture({ dragError: new Error('native drag rejected') });
-  await assert.rejects(installNativeStartupExtension(f.browser, source, version), /native drag rejected/);
-  assert.equal(f.calls.filter(call => call.method === 'Input.dispatchDragEvent').length, 1);
-  assert.equal(f.calls.at(-1).method, 'detach');
-});
-
-for (const options of [{ installedVersion: '0.0.1' }, { installedState: 'DISABLED' }]) {
-  test(`native installation rejects unexpected installed metadata ${JSON.stringify(options)}`, async () => {
-    const f = fixture(options);
-    await assert.rejects(installNativeStartupExtension(f.browser, source, version, 5), /identity did not match/);
-    assert.equal(f.calls.at(-1).method, 'detach');
+for (const input of [{ windowPid: 999 }, { dialogTitle: 'unrelated dialog' }, { ambiguousDialog: true }]) {
+  test('native installation rejects a dialog it cannot uniquely own ' + JSON.stringify(input), async () => {
+    const f = fixture(input);
+    await assert.rejects(install(f), /dialog (owner|title|identity)/);
+    assert.equal(inputCalls(f).length, 0);
   });
 }
-
-test('native installation waits for the actual metadata after initially empty asynchronous reads', async () => {
-  const f = fixture({ installAfterReads: 2 });
-  const installed = await installNativeStartupExtension(f.browser, source, version, 1000);
-  assert.equal(installed.id, id);
-  assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 3);
-  assert.equal(f.calls.filter(call => call.method === 'Input.dispatchDragEvent').length, 3,
-    'metadata polling does not repeat the installer');
-  assert.equal(f.calls.at(-1).method, 'detach');
+test('native folder selection stops before typing when desktop focus changes', async () => {
+  const f = fixture({ changedFocus: true });
+  await assert.rejects(install(f), /focus changed/);
+  assert.equal(inputCalls(f).length, 1);
+  assert.deepEqual(inputCalls(f)[0].args, ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a']);
 });
-
+test('a rejected native Open action is reported without a second install or input attempt', async () => {
+  const f = fixture({ acceptError: new Error('native Open rejected') });
+  await assert.rejects(install(f), /native Open rejected/);
+  assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
+  assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'alt+o').length, 1);
+});
+test('a missing dialog reaches the original deadline without sending keyboard input', async () => {
+  const f = fixture({ missingDialog: true });
+  await assert.rejects(install(f, 5), /directory dialog did not appear/);
+  assert.equal(inputCalls(f).length, 0);
+  assert.ok(f.calls.filter(call => call.file).every(call => call.timeout > 0 && call.timeout <= 3000));
+});
+test('a failed dialog backend is not treated as an absent window or retried', async () => {
+  const f = fixture({ searchError: Object.assign(new Error('desktop unavailable'), { code: 'ENOENT' }) });
+  await assert.rejects(install(f), /desktop unavailable/);
+  assert.equal(f.calls.filter(call => call.args?.[0] === 'search').length, 1);
+  assert.equal(inputCalls(f).length, 0);
+});
+for (const options of [{ installedVersion: '0.0.1' }, { installedState: 'DISABLED' }]) {
+  test('native installation retains strict installed metadata checks ' + JSON.stringify(options), async () => {
+    await assert.rejects(install(fixture(options), 25), /identity did not match/);
+  });
+}
+test('native installation waits for metadata after initially empty asynchronous reads without reopening the dialog', async () => {
+  const f = fixture({ installAfterReads: 2 });
+  assert.equal((await install(f, 1000)).id, id);
+  assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 3);
+  assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
+  assert.equal(inputCalls(f).length, 3);
+});
 test('native metadata read cannot outlive the original bounded installation timeout', async () => {
   const f = fixture({ stalledRead: true });
-  await assert.rejects(installNativeStartupExtension(f.browser, source, version, 5), /identity did not match/);
+  await assert.rejects(install(f, 25), /identity did not match/);
   assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 1);
-  assert.equal(f.calls.at(-1).method, 'detach');
 });
-
-test('native installer refuses a relative path before touching the browser', async () => {
-  await assert.rejects(installNativeStartupExtension({ contexts() { throw new Error('browser was touched'); } }, './extension', version), /absolute local extension path/);
+test('native installation fails before opening a page when XTEST, DISPLAY or an owned process is unavailable', async () => {
+  for (const overrides of [{ platform: 'win32' }, { env: {} }, { browserPid: undefined }, { browserPid: -1 }]) {
+    const f = fixture();
+    await assert.rejects(installNativeStartupExtension(f.browser, source, version, 15000,
+      { ...f.desktop, ...overrides }), /Linux\/X11|owned Chromium process/);
+    assert.equal(f.calls.some(call => call.method === 'goto'), false);
+    assert.equal(inputCalls(f).length, 0);
+  }
+  const f = fixture({ xtest: false });
+  await assert.rejects(install(f), /XTEST/);
+  assert.equal(f.calls.some(call => call.method === 'goto'), false);
+});
+test('native installer refuses relative or control-character paths before touching the browser', async () => {
+  for (const input of ['./extension', '/owned/extension\nother', '/owned/extension\u0000']) {
+    const f = fixture();
+    await assert.rejects(installNativeStartupExtension(f.browser, input, version, 15000, f.desktop), /absolute local extension path/);
+    assert.deepEqual(f.calls, []);
+  }
 });

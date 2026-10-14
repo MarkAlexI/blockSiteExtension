@@ -135,7 +135,9 @@ class ExtensionHarness {
           this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
             noDefaults: true, isLocal: true
           });
-          this.startupInstallation = await installNativeStartupExtension(this.nativeBrowser, extensionPath, this.manifest.version);
+          const { pid } = await this.nativeOwner.diagnostics();
+          this.startupInstallation = await installNativeStartupExtension(this.nativeBrowser, extensionPath, this.manifest.version,
+            15000, { browserPid: pid });
           await this.testInfo.attach('native-persistent-install', {
             contentType: 'application/json', body: JSON.stringify(this.startupInstallation)
           });
