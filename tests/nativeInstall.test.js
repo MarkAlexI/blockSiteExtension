@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { installNativeStartupExtension, persistentStartupArgs } from '../e2e/native-install.mjs';
 
-const source = '/owned/test-extension', id = 'a'.repeat(32), version = '5.3.26';
-function fixture({ dragError = null, installedVersion = version, installedState = 'ENABLED' } = {}) {
+const source = '/owned/test-extension', id = 'a'.repeat(32), version = '5.3.27';
+function fixture({ dragError = null, installedVersion = version, installedState = 'ENABLED', installAfterReads = 0, stalledRead = false } = {}) {
   const calls = [], toggle = { checked: false }, records = [];
+  let reads = 0;
   const sandbox = { innerWidth: 1280, innerHeight: 900,
-    chrome: { developerPrivate: { getExtensionsInfo: async () => records } } };
+    chrome: { developerPrivate: { getExtensionsInfo: async () => {
+      reads++;
+      calls.push({ method: 'getExtensionsInfo' });
+      if (stalledRead) return new Promise(() => {});
+      return reads <= installAfterReads ? [] : records;
+    } } } };
   const evaluate = (func, arg) => runInNewContext(`(${func.toString()})(arg)`, { ...sandbox, arg });
   const control = { async send(method, args) {
     calls.push({ method, args });
@@ -20,9 +26,11 @@ function fixture({ dragError = null, installedVersion = version, installedState 
     async evaluate(func, arg) { return evaluate(func, arg); },
     async waitForFunction(func, arg, options) {
       assert.equal(options.timeout, 15000);
-      const value = await evaluate(func, arg);
+      // Match Playwright 1.62.1: the poller checks the returned value's
+      // truthiness before a Promise is resolved. A Promise<false> stops it.
+      const value = evaluate(func, arg);
       if (!value) throw new Error('native installed identity did not match');
-      return { async jsonValue() { return value; } };
+      return { async jsonValue() { return await value; } };
     } };
   const context = { async newPage() { return page; }, async newCDPSession(candidate) { assert.equal(candidate, page); return control; } };
   return { browser: { contexts: () => [context] }, calls, toggle };
@@ -59,10 +67,27 @@ test('native installation fails on a rejected directory drop, without falling ba
 for (const options of [{ installedVersion: '0.0.1' }, { installedState: 'DISABLED' }]) {
   test(`native installation rejects unexpected installed metadata ${JSON.stringify(options)}`, async () => {
     const f = fixture(options);
-    await assert.rejects(installNativeStartupExtension(f.browser, source, version), /identity did not match/);
+    await assert.rejects(installNativeStartupExtension(f.browser, source, version, 5), /identity did not match/);
     assert.equal(f.calls.at(-1).method, 'detach');
   });
 }
+
+test('native installation waits for the actual metadata after initially empty asynchronous reads', async () => {
+  const f = fixture({ installAfterReads: 2 });
+  const installed = await installNativeStartupExtension(f.browser, source, version, 1000);
+  assert.equal(installed.id, id);
+  assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 3);
+  assert.equal(f.calls.filter(call => call.method === 'Input.dispatchDragEvent').length, 3,
+    'metadata polling does not repeat the installer');
+  assert.equal(f.calls.at(-1).method, 'detach');
+});
+
+test('native metadata read cannot outlive the original bounded installation timeout', async () => {
+  const f = fixture({ stalledRead: true });
+  await assert.rejects(installNativeStartupExtension(f.browser, source, version, 5), /identity did not match/);
+  assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 1);
+  assert.equal(f.calls.at(-1).method, 'detach');
+});
 
 test('native installer refuses a relative path before touching the browser', async () => {
   await assert.rejects(installNativeStartupExtension({ contexts() { throw new Error('browser was touched'); } }, './extension', version), /absolute local extension path/);

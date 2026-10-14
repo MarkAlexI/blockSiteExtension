@@ -1,6 +1,36 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.26**. Playwright: **1.62.1**, Node.js: **20+**.
+Цільова версія: **5.3.27**. Playwright: **1.62.1**, Node.js: **20+**.
+
+## Ітерація 5.3.27: відновлення бюджету та DNR
+
+На commit `6541e093e39486db29717b2f8481a5add187eb5f` Chromium E2E
+run [38409496385](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/38409496385)
+завершився з 40 passed і 5 failed. Чотири перевірки мали правильний persisted
+usage/journal, але застарілий або відсутній DNR. Окреме падіння native startup
+сталося в installer metadata (`installed.id` був undefined).
+
+Production-worker регресії відтворили пропущений DNR sync після install/update:
+canonical rules не потребували user-visible migration, а внутрішнє recovery
+денного бюджету вже змінило рішення про блокування. Canonical install/update
+тепер завершується awaited DNR sync після usage, Focus та access normalization.
+Видима міграція вже має попередній sync; startup і browser update мають власні
+sync/integrity steps. Їхній tab cleanup не дублюється.
+
+Playwright 1.62.1 перевіряє truthiness результату waitForFunction до очікування
+Promise. Async predicate із першим порожнім getExtensionsInfo міг завершити
+очікування зі false. Installer тепер очікує результат кожного справжнього
+асинхронного WebUI read і перевіряє metadata, з тією ж межею 15 секунд.
+Регресії перевіряють початкові порожні reads, відсутність повторного drop,
+неправильні version/state та timeout навіть при завислому API read.
+
+Наступний CI має виконати всі 45 існуючих Chromium сценаріїв із zero retries.
+Пріоритет: durable-remap restart, mixed-v1 startup, date-line ABA, expired-day
+reader recovery та native startup restore. Assertions і timeout цих сценаріїв
+не змінені. Node regressions не замінюють native browser verification.
+
+Джерело семантики poller:
+[Playwright v1.62.1 frames.ts](https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/frames.ts).
 
 ## Статус перевірки
 

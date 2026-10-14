@@ -1,10 +1,39 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export function persistentStartupArgs(args) {
   // Chromium explicitly skips kCommandLine extensions when loading saved
   // extensions. Both switches load them again, firing a fresh install event.
   return args.filter(arg => !arg.startsWith('--load-extension=') && !arg.startsWith('--disable-extensions-except='));
+}
+
+async function waitForNativeInstallation(page, source, version, timeout) {
+  const deadline = Date.now() + timeout;
+  const expired = () => new Error(`native installed identity did not match within ${timeout}ms`);
+  for (;;) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw expired();
+    let timer;
+    let installed;
+    try {
+      // waitForFunction treats a Promise as truthy before it resolves. Await
+      // the real asynchronous WebUI API result before deciding whether to poll.
+      installed = await Promise.race([
+        page.evaluate(async ({ source, version }) => {
+          const records = await chrome.developerPrivate.getExtensionsInfo({ includeDisabled: true, includeTerminated: true });
+          return records.find(item => item.path === source && item.version === version &&
+            item.location === 'UNPACKED' && item.state === 'ENABLED') || null;
+        }, { source, version }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(expired()), remaining); })
+      ]);
+    } finally { clearTimeout(timer); }
+    if (Date.now() >= deadline) throw expired();
+    if (installed) return installed;
+    // onInstalled can foreground Options. Timer polling still reads the real
+    // background WebUI, with the original deadline and no visibility shim.
+    await delay(Math.min(100, deadline - Date.now()));
+  }
 }
 
 // One-time setup in the fixture's empty, owned profile. Use the actual
@@ -28,14 +57,7 @@ export async function installNativeStartupExtension(browser, source, version, ti
     for (const type of ['dragEnter', 'dragOver', 'drop']) {
       await control.send('Input.dispatchDragEvent', { type, ...point, data });
     }
-    const ready = await page.waitForFunction(async ({ source, version }) => {
-      const installed = await chrome.developerPrivate.getExtensionsInfo({ includeDisabled: true, includeTerminated: true });
-      return installed.find(item => item.path === source && item.version === version &&
-        item.location === 'UNPACKED' && item.state === 'ENABLED') || false;
-    // onInstalled can foreground Options before this observer runs. Timer
-    // polling observes the real background WebUI without emulating focus.
-    }, { source, version }, { timeout, polling: 100 });
-    const installed = await ready.jsonValue();
+    const installed = await waitForNativeInstallation(page, source, version, timeout);
     assert.match(installed.id, /^[a-p]{32}$/);
     return { method: 'chrome://extensions native directory drop', id: installed.id,
       path: installed.path, version: installed.version, location: installed.location, state: installed.state };
