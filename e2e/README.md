@@ -1,6 +1,17 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.3.27**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.3.28**. Playwright: **1.62.1**, Node.js: **22+**.
+
+## Ітерація 5.3.28: Focus Stop
+
+Stop повертає явний pending status за відмови DNR, а Popup показує наявне
+локалізоване повідомлення й оновлює збережений стан. Лічильник focus_stopped
+рахує тільки збережений перехід активної сесії в неактивну. Додано 19 worker/UI
+регресій для повторних Stop, природного завершення, scheduled occurrence,
+помилок звітування, відновлення DNR та конкурентного Start.
+
+E2E target автоматично читається з manifest.json і тепер дорівнює 5.3.28.
+Повний native Desktop E2E для цього релізного коміту ще має пройти окремо.
 
 ## Native installer correction (2026-10-14, tests only)
 
