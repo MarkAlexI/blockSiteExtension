@@ -6,6 +6,7 @@ import { t } from './scripts/t.js';
 import { RulesManager } from './rules/rulesManager.js';
 import { readRulesViewSnapshot } from './rules/rulesViewSnapshot.js';
 import { RulesClient } from './rules/rulesClient.js';
+import { getRulesMutationFeedback } from './rules/rulesMutationFeedback.js';
 import { isExpectedRulesRejection } from './rules/rulesErrorClassification.js';
 import { RulesUI, formatDailyLimitUsageMinutes } from './rules/rulesUI.js';
 import { ProManager } from './pro/proManager.js';
@@ -454,7 +455,7 @@ class PopupPage {
           }
         }
         
-        await this.rulesClient.addRule({
+        const response = await this.rulesClient.addRule({
           expectedGeneration: listContext.generation,
           expectedListRevisions: listContext.revisions,
           blockURL: url,
@@ -468,7 +469,7 @@ class PopupPage {
           },
           isWhitelist: false
         });
-        customAlert('+ 1');
+        this.showRulesMutationResult(response, '+ 1');
         button.remove();
       }
     } catch (error) {
@@ -833,8 +834,9 @@ class PopupPage {
     if (isDisablingRule && !await this.authorizePasswordProtectedRuleChange()) return;
 
     try {
-      await this.rulesClient.toggleRule(ruleId, listId || GENERAL_RULE_LIST_ID, expectedGeneration, expectedRevision);
+      const response = await this.rulesClient.toggleRule(ruleId, listId || GENERAL_RULE_LIST_ID, expectedGeneration, expectedRevision);
       await this.loadRules();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Toggle rule error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -878,7 +880,7 @@ class PopupPage {
         }
       }
       
-      await this.rulesClient.addRule({
+      const response = await this.rulesClient.addRule({
         expectedGeneration: listContext?.generation ?? null,
         expectedListRevisions: listContext?.revisions || {},
         blockURL: blockURL.value,
@@ -894,7 +896,7 @@ class PopupPage {
       });
       
       ruleDiv.remove();
-      customAlert('+ 1');
+      this.showRulesMutationResult(response, '+ 1');
     } catch (error) {
       this.logRulesMutationFailure('Save new rule error:', error);
       this.handleRulesMutationError(error, 'erroraddingrule');
@@ -933,12 +935,10 @@ class PopupPage {
         async () => {
             try {
               if (blockURL && ruleId !== null) {
-                if (ruleDiv.dataset.isWhitelist === 'true') {
-                  await this.rulesClient.deleteRule(ruleId, expectedGeneration, expectedRevision);
-                } else {
-                  await this.rulesClient.removeAssignment(ruleId, assignmentListId, expectedGeneration, expectedRevision);
-                }
-                customAlert('- 1');
+                const response = ruleDiv.dataset.isWhitelist === 'true'
+                  ? await this.rulesClient.deleteRule(ruleId, expectedGeneration, expectedRevision)
+                  : await this.rulesClient.removeAssignment(ruleId, assignmentListId, expectedGeneration, expectedRevision);
+                this.showRulesMutationResult(response, '- 1');
               } else {
                 ruleDiv.remove();
               }
@@ -959,6 +959,11 @@ class PopupPage {
     }
   }
   
+  showRulesMutationResult(response, successMessage = '') {
+    const { message } = getRulesMutationFeedback(response, successMessage);
+    if (message) customAlert(message);
+  }
+
   async promptForPassword() {
     return new Promise((resolve) => {
       PasswordUtils.showPasswordModal('verify', (isValid) => {

@@ -3,6 +3,7 @@ import { SettingsManager } from './settings.js';
 import { ProManager } from '../pro/proManager.js';
 import { RulesManager } from '../rules/rulesManager.js';
 import { RulesClient, sendRuntimeMessage } from '../rules/rulesClient.js';
+import { getRulesMutationFeedback } from '../rules/rulesMutationFeedback.js';
 import { isExpectedRulesRejection } from '../rules/rulesErrorClassification.js';
 import { RulesUI } from '../rules/rulesUI.js';
 import { CategoryManager } from '../rules/categoryManager.js';
@@ -448,13 +449,14 @@ class OptionsPage {
     if (isDisablingRule && !await this.authorizePasswordProtectedRuleChange()) return;
 
     try {
-      await this.rulesClient.toggleRule(
+      const response = await this.rulesClient.toggleRule(
         ruleId,
         assignment?.listId || GENERAL_RULE_LIST_ID,
         expectedGeneration,
         expectedRevision
       );
       await this.refreshProfileView();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Toggle rule error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -624,8 +626,9 @@ class OptionsPage {
         deleteButton,
         async () => {
           try {
-            await this.rulesClient.removeAssignment(ruleId, listId, expectedGeneration, expectedRevision);
+            const response = await this.rulesClient.removeAssignment(ruleId, listId, expectedGeneration, expectedRevision);
             await this.refreshProfileView();
+            this.showRulesMutationResult(response);
           } catch (error) {
             this.logRulesMutationFailure('Remove rule assignment error:', error);
             this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -659,9 +662,9 @@ class OptionsPage {
         deleteButton,
         async () => {
             try {
-              await this.rulesClient.deleteRule(ruleId, expectedGeneration, expectedRevision);
+              const response = await this.rulesClient.deleteRule(ruleId, expectedGeneration, expectedRevision);
               await this.refreshProfileView();
-              this.rulesUI.showSuccessMessage(t('ruleddeleted'), this.statusElement);
+              this.showRulesMutationResult(response, t('ruleddeleted'));
             } catch (error) {
               this.logRulesMutationFailure('Delete rule error:', error);
               this.handleRulesMutationError(error, 'errorremovingrule');
@@ -739,7 +742,7 @@ class OptionsPage {
 
   async saveEditedRule(ruleId, sourceListId, newBlock, newRedirect, newCategory, blockingConfig, targetListId, disabledByUser, isWhitelist = false, expectedGeneration = null, expectedRevision = null, expectedListRevisions = {}) {
     try {
-      await this.rulesClient.updateRule({
+      const response = await this.rulesClient.updateRule({
         ruleId,
         expectedGeneration,
         expectedRevision,
@@ -757,7 +760,7 @@ class OptionsPage {
         }
       });
       await this.refreshProfileView();
-      this.statusElement.textContent = t('ruleupdated');
+      this.showRulesMutationResult(response, t('ruleupdated'));
     } catch (error) {
       this.logRulesMutationFailure('Save edited rule error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -826,7 +829,7 @@ class OptionsPage {
         isWhitelist
       });
       await this.refreshProfileView();
-      this.statusElement.textContent = response?.assignmentAdded ? t('ruleupdated') : t('rulenewadded');
+      this.showRulesMutationResult(response, response?.assignmentAdded ? t('ruleupdated') : t('rulenewadded'));
     } catch (error) {
       this.logRulesMutationFailure('Save new rule error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -862,6 +865,7 @@ class OptionsPage {
       this.activeRuleListId = response.activeRuleListId || response.list?.id || GENERAL_RULE_LIST_ID;
 
       await this.refreshProfileView();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Create rule list error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -874,6 +878,7 @@ class OptionsPage {
       const response = await this.rulesClient.activateRuleList(targetListId, expectedGeneration, expectedListRevision);
       this.activeRuleListId = response.activeRuleListId || targetListId;
       await this.refreshProfileView();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Activate rule list error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -884,8 +889,9 @@ class OptionsPage {
     const name = prompt(`${t('editbtn')}: ${t('rulelists_title')}`, list.name);
     if (name === null) return;
     try {
-      await this.rulesClient.renameRuleList(list.id, name, expectedGeneration, expectedListRevision);
+      const response = await this.rulesClient.renameRuleList(list.id, name, expectedGeneration, expectedListRevision);
       await this.refreshProfileView();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Rename rule list error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -897,11 +903,12 @@ class OptionsPage {
     if (!await this.authorizePasswordProtectedRuleChange()) return;
 
     try {
-      await this.rulesClient.deleteRuleList(list.id, expectedGeneration, expectedListRevision);
+      const response = await this.rulesClient.deleteRuleList(list.id, expectedGeneration, expectedListRevision);
       if (this.activeRuleListId === list.id) {
         this.activeRuleListId = GENERAL_RULE_LIST_ID;
       }
       await this.refreshProfileView();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Delete rule list error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
@@ -930,14 +937,22 @@ class OptionsPage {
         return;
       }
 
-      await this.rulesClient.toggleCategory(category, captured.listId, captured.generation, captured.revision);
+      const response = await this.rulesClient.toggleCategory(category, captured.listId, captured.generation, captured.revision);
       await this.refreshProfileView();
+      this.showRulesMutationResult(response);
     } catch (error) {
       this.logRulesMutationFailure('Category toggle error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
     }
   }
   
+  showRulesMutationResult(response, successMessage = '') {
+    const { message, pending } = getRulesMutationFeedback(response, successMessage);
+    if (!message) return;
+    this.rulesUI.showSuccessMessage(message, this.statusElement);
+    if (pending) this.rulesUI.showErrorMessage(message);
+  }
+
   cleanup() {
     this.disposed = true;
     this.proAccessRefreshId = (this.proAccessRefreshId || 0) + 1;

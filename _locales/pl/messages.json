@@ -1148,5 +1148,8 @@
   },
   "problockingsyncpending": {
     "message": "Dostęp Pro został przywrócony. Reguły blokowania przeglądarki nadal czekają na synchronizację."
+  },
+  "ruleschangessavedpending": {
+    "message": "Zmiany zapisane. Reguły blokowania nie zostały jeszcze w pełni zastosowane."
   }
 }
