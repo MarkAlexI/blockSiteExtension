@@ -6,11 +6,15 @@
 ![Last commit](https://img.shields.io/github/last-commit/MarkAlexI/blockSiteExtension)
 ![Issues](https://img.shields.io/github/issues/MarkAlexI/blockSiteExtension)
 [![Chrome Web Store](https://img.shields.io/chrome-web-store/v/kfhgdgokgjmdboidlhphajinmgpcmmec?logo=google-chrome)](https://chromewebstore.google.com/detail/kfhgdgokgjmdboidlhphajinmgpcmmec)
-[![Chromium Source](https://img.shields.io/badge/Chromium%20Source-v5.3.29-blue?logo=google-chrome)](https://github.com/MarkAlexI/blockSiteExtension)
+[![Chromium Source](https://img.shields.io/badge/Chromium%20Source-v5.4.0-blue?logo=google-chrome)](https://github.com/MarkAlexI/blockSiteExtension)
 [![AMO](https://img.shields.io/amo/v/blockersite)](https://addons.mozilla.org/uk/firefox/addon/blockersite/)
 
 ## About
 An extension that blocks or redirects HTTP and HTTPS website requests using `declarativeNetRequest` dynamic rules.
+
+## Accessibility work
+
+Version 5.4.0 starts a series of accessibility improvements with shared contrast colors, restrained glass surfaces and visible keyboard focus. See [the accessibility roadmap](docs/accessibility-roadmap.md) for completed checks, known semantic issues and the next patches.
 
 ## Development checks
 
