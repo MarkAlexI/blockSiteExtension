@@ -1154,5 +1154,8 @@
   },
   "scrolltotop": {
     "message": "Powrót na górę"
+  },
+  "feedback_action_error": {
+    "message": "Nie udało się ukończyć działania. Spróbuj ponownie."
   }
 }

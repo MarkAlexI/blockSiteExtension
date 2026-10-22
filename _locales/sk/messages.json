@@ -1154,5 +1154,8 @@
   },
   "scrolltotop": {
     "message": "Späť nahor"
+  },
+  "feedback_action_error": {
+    "message": "Akciu sa nepodarilo dokončiť. Skúste to znova."
   }
 }

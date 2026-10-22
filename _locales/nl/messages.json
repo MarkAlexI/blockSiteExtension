@@ -1154,5 +1154,8 @@
   },
   "scrolltotop": {
     "message": "Terug naar boven"
+  },
+  "feedback_action_error": {
+    "message": "De actie kon niet worden voltooid. Probeer het opnieuw."
   }
 }

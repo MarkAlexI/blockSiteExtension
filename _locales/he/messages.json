@@ -1154,5 +1154,8 @@
   },
   "scrolltotop": {
     "message": "חזרה למעלה"
+  },
+  "feedback_action_error": {
+    "message": "לא ניתן להשלים את הפעולה. יש לנסות שוב."
   }
 }

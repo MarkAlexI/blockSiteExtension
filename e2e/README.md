@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.4.2**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.4.3**. Playwright: **1.62.1**, Node.js: **22+**.
 
 ## Ітерація 5.3.29: повідомлення про збережені зміни
 
@@ -998,3 +998,12 @@ Enter з другого поля, Tab/Shift+Tab, Escape, невірний пар
 відновлення й дозволене видалення після правильної перевірки.
 Локально Firefox 153: 49 і наявний 22 пройшли; native Chromium очікує CI.
 Див. `docs/accessibility-roadmap.md`. `update.js` для 5.4.2 не змінено.
+
+
+## A11Y-03 / 5.4.3: Feedback, Rule Packs and Schedule
+
+Scenarios 50–51 cover named dialogs, real Tab/Shift+Tab, Escape, background
+inertness, nested and standalone Schedule focus, validation, group editing,
+one explicit Rule Pack save and Feedback dismissal. Node tests separately
+cover controlled storage/tab failures, duplicate submissions and stale results.
+Patch releases leave `update/update.js` unchanged.

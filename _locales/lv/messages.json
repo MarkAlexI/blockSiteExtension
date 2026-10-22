@@ -1154,5 +1154,8 @@
   },
   "scrolltotop": {
     "message": "Atpakaļ uz augšu"
+  },
+  "feedback_action_error": {
+    "message": "Neizdevās pabeigt darbību. Lūdzu, mēģiniet vēlreiz."
   }
 }

@@ -1154,5 +1154,8 @@
   },
   "scrolltotop": {
     "message": "Torna a dalt"
+  },
+  "feedback_action_error": {
+    "message": "No s’ha pogut completar l’acció. Torna-ho a provar."
   }
 }
