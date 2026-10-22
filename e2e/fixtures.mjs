@@ -3,7 +3,8 @@ import { test as base, expect } from 'playwright/test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
-import { launchNativeChromium, prepareNativePages, targetsAt } from './native-launch.mjs';
+import { launchNativeChromium, targetsAt } from './native-launch.mjs';
+import { connectPreparedNativeBrowser } from './native-connection.mjs';
 import { installNativeStartupExtension, persistentStartupArgs } from './native-install.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
 import { observeColdWorker, evaluateColdProducer } from './native-cold-message.mjs';
@@ -130,51 +131,52 @@ class ExtensionHarness {
         args: persistentInstall ? persistentStartupArgs(launchOptions.args) : launchOptions.args, env: launchOptions.env,
         activityLog: this.testInfo.tags.includes('@native-activity-log'), restoreSession
       });
+      let setupStage = 'install, prepare pages and connect';
       try {
-        if (persistentInstall && !this.installed) {
-          this.nativeBrowser = await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
-            noDefaults: true, isLocal: true
-          });
-          const { pid } = await this.nativeOwner.diagnostics();
-          this.startupInstallation = await installNativeStartupExtension(this.nativeBrowser, extensionPath, this.manifest.version,
-            15000, { browserPid: pid });
-          await this.testInfo.attach('native-persistent-install', {
-            contentType: 'application/json', body: JSON.stringify(this.startupInstallation)
-          });
-        }
         // --lang=en-US falls back to the installed English catalog. The real
         // Options title proves its native translation completed; fetching or
         // replacing translations in the renderer would hide an empty bundle.
         const installTitle = this.installed ? undefined : JSON.parse(await readFile(
           path.join(extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
-        const prepared = await prepareNativePages(this.nativeOwner.endpoint, {
-          waitForInstall: !this.installed, installTitle, restoreSession
+        this.nativeBrowser = await connectPreparedNativeBrowser(chromium, this.nativeOwner, {
+          install: persistentInstall && !this.installed ? async browser => {
+            const { pid } = await this.nativeOwner.diagnostics();
+            this.startupInstallation = await installNativeStartupExtension(browser, extensionPath, this.manifest.version,
+              15000, { browserPid: pid });
+            await this.testInfo.attach('native-persistent-install', {
+              contentType: 'application/json', body: JSON.stringify(this.startupInstallation)
+            });
+          } : undefined,
+          prepareOptions: { waitForInstall: !this.installed, installTitle, restoreSession },
+          onPrepared: prepared => this.testInfo.attach('native-pages-before-cdp', {
+            contentType: 'application/json', body: JSON.stringify(prepared)
+          })
         });
-        await this.testInfo.attach('native-pages-before-cdp', {
-          contentType: 'application/json', body: JSON.stringify(prepared)
-        });
-        this.nativeBrowser ??= await chromium.connectOverCDP(this.nativeOwner.webSocketDebuggerUrl, {
-          noDefaults: true, isLocal: true
-        });
+        setupStage = 'select native default context';
+        [this.context] = this.nativeBrowser.contexts();
+        expect(this.context, 'native default browser context').toBeTruthy();
+        // Keep a blank tab while closing the install/onboarding tabs below.
+        // Native headed Chrome can quit when its last browser window closes.
+        if (!restoreSession && !this.context.pages().some(page => page.url() === 'about:blank')) await this.context.newPage();
+        setupStage = 'start tracing and configure routes';
+        await this.configureContext();
       } catch (error) {
         try {
           await this.testInfo.attach('native-cdp-setup-failure', {
-            contentType: 'application/json', body: JSON.stringify(await this.nativeOwner.diagnostics())
+            contentType: 'application/json', body: JSON.stringify({
+              ...await this.nativeOwner.diagnostics(), setupStage, error: String(error),
+              connected: this.nativeBrowser?.isConnected() ?? false
+            })
           });
         } catch (diagnosticError) {
           this.testInfo.annotations.push({ type: 'diagnostic', description: String(diagnosticError) });
         }
         throw error;
       }
-      [this.context] = this.nativeBrowser.contexts();
-      expect(this.context, 'native default browser context').toBeTruthy();
-      // Keep a blank tab while closing the install/onboarding tabs below.
-      // Native headed Chrome can quit when its last browser window closes.
-      if (!restoreSession && !this.context.pages().some(page => page.url() === 'about:blank')) await this.context.newPage();
     } else {
       this.context = await chromium.launchPersistentContext(this.profile, launchOptions);
+      await this.configureContext();
     }
-    await this.configureContext();
     const { worker, identity } = await extensionWorker(this.context, this.manifest);
     this.worker = worker;
     this.id = identity.id;

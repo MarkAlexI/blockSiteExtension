@@ -2,6 +2,37 @@
 
 Цільова версія: **5.4.3**. Playwright: **1.62.1**, Node.js: **22+**.
 
+## Startup CDP setup correction (2026-10-23, tests only)
+
+На `5e94460ed23fa9f653b4628107794e85782882db`
+[run 39854297861](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/39854297861)
+має **48 passed / 1 failed**. Усі dialog scenarios пройшли. Startup restore
+зупинився до seed/body на `tracing.start: Target page, context or browser has
+been closed`. Таке саме setup failure було на 5.4.2 у
+[run 39849590724](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/39849590724).
+Його artifact підтверджує успішний native installer, enabled unpacked extension,
+локалізований Options title і keeper tab після HTTP cleanup. Діагностики процесу
+в момент tracing failure немає; точну причину закриття цими даними не встановлено.
+
+Installer раніше лишав CDP client підключеним під час HTTP cleanup його вкладок,
+а scenario повторно використовував той самий context. Тепер короткий installer
+client від'єднується до cleanup; scenario підключається після нього заново до
+того самого owned process/profile. Зв'язок stale installer sessions із CI failure
+лишається гіпотезою до нового headed run. Для `connectOverCDP`, `browser.close()`
+від'єднує transport; тут не закривається context і не надсилається CDP `Browser.close`.
+Обидва connections зберігають `noDefaults`/`isLocal`. Native setup diagnostics
+тепер охоплює tracing/routes і додає stage, error та connection state.
+
+Вісім Node protocol-model tests перевіряють межу між клієнтами, відмови без
+повторної інсталяції та read-only restore. Локально: **1930/1930** root tests,
+validator/contrast і реєстрація **49** E2E scenarios. Окремий реальний Chrome
+Headless Shell smoke пройшов fresh connection/tracing, зберіг PID/profile cookie,
+а read-only reconnect зберіг target IDs і document timeOrigin. Старий порядок
+відхиляється protocol-model guard; саме CI failure локально не відтворено.
+Це не виконання native GTK/startup restore scenario: фінальне приймання потребує
+Linux headed CI. Runtime, версія 5.4.3, `update/update.js`, startup assertions,
+timeouts та zero retries незмінні.
+
 ## Ітерація 5.3.29: повідомлення про збережені зміни
 
 Popup, Options і Settings показують `ruleschangessavedpending`, якщо committed
