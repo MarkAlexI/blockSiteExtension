@@ -30,9 +30,14 @@ function unzip(archive) {
 
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), 'bd-store-package-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // Retry transient filesystem races, but still fail if cleanup cannot finish.
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git(['init']);
+  // A commit may launch detached maintenance that outlives execFileSync and
+  // writes into .git while the after hook removes this disposable repository.
+  git(['config', '--local', 'maintenance.auto', 'false']);
+  git(['config', '--local', 'gc.auto', '0']);
   for (const entry of runtimePaths) {
     const filename = path.join(root, entry.includes('.') ? entry : `${entry}/fixture.js`);
     mkdirSync(path.dirname(filename), { recursive: true });
