@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Promjene su spremljene. Pravila blokiranja još nisu u potpunosti primijenjena."
+  },
+  "scrolltotop": {
+    "message": "Povratak na vrh"
   }
 }

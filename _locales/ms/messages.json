@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Perubahan disimpan. Peraturan penyekatan belum digunakan sepenuhnya."
+  },
+  "scrolltotop": {
+    "message": "Kembali ke atas"
   }
 }

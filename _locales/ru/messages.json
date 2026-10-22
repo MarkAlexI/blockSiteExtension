@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Изменения сохранены. Правила блокировки ещё не применены полностью."
+  },
+  "scrolltotop": {
+    "message": "Наверх"
   }
 }

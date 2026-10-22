@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Izmaiņas saglabātas. Bloķēšanas noteikumi vēl nav pilnībā piemēroti."
+  },
+  "scrolltotop": {
+    "message": "Atpakaļ uz augšu"
   }
 }

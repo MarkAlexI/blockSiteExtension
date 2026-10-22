@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Pakeitimai išsaugoti. Blokavimo taisyklės dar nėra visiškai pritaikytos."
+  },
+  "scrolltotop": {
+    "message": "Grįžti į viršų"
   }
 }

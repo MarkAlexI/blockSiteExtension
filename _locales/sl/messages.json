@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Spremembe so shranjene. Pravila blokiranja še niso v celoti uveljavljena."
+  },
+  "scrolltotop": {
+    "message": "Nazaj na vrh"
   }
 }

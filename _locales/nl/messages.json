@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Wijzigingen opgeslagen. De blokkeerregels zijn nog niet volledig toegepast."
+  },
+  "scrolltotop": {
+    "message": "Terug naar boven"
   }
 }

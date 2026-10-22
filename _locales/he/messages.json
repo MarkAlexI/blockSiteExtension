@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "השינויים נשמרו. כללי החסימה עדיין לא הוחלו במלואם."
+  },
+  "scrolltotop": {
+    "message": "חזרה למעלה"
   }
 }

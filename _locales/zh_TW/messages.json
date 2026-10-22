@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "變更已儲存。封鎖規則尚未完全套用。"
+  },
+  "scrolltotop": {
+    "message": "回到頂端"
   }
 }

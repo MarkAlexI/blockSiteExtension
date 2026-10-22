@@ -980,3 +980,12 @@ Chromium list still contains 45 native tests in 17 files. Native execution is
 blocked locally by AF_UNIX EPERM. The directory-drop installer and the full
 startup scenario require the owner's next headed CI run; these root results
 are not native acceptance or proof of signed-store installation.
+
+## A11Y-02 / 5.4.0: сценарій 48
+
+`npm test -- accessibility.spec.mjs` перевіряє нативні Enter/Space/Tab/Shift+Tab у семи секціях,
+виключення hidden-панелей із Tab, збереження чернетки після згортання,
+accessible names списків і фокус кнопки прокручування. Сценарій не змінює
+збережені правила. Для Chromium тут перевірено Blink-рендеринг; native
+запуск блокується до тіла тесту через ProcessSingleton socket. Firefox 153
+із тимчасовим встановленням пройшов. Подробиці — `docs/accessibility-roadmap.md`.

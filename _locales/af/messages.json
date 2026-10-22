@@ -1151,5 +1151,8 @@
   },
   "ruleschangessavedpending": {
     "message": "Veranderinge gestoor. Blokkeerreëls is nog nie volledig toegepas nie."
+  },
+  "scrolltotop": {
+    "message": "Terug na bo"
   }
 }
