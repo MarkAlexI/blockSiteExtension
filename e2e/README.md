@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.4.0**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.4.1**. Playwright: **1.62.1**, Node.js: **22+**.
 
 ## Ітерація 5.3.29: повідомлення про збережені зміни
 
@@ -981,11 +981,12 @@ blocked locally by AF_UNIX EPERM. The directory-drop installer and the full
 startup scenario require the owner's next headed CI run; these root results
 are not native acceptance or proof of signed-store installation.
 
-## A11Y-02 / 5.4.0: сценарій 48
+## A11Y-02 / 5.4.1: сценарій 48
 
 `npm test -- accessibility.spec.mjs` перевіряє нативні Enter/Space/Tab/Shift+Tab у семи секціях,
 виключення hidden-панелей із Tab, збереження чернетки після згортання,
 accessible names списків і фокус кнопки прокручування. Сценарій не змінює
 збережені правила. Для Chromium тут перевірено Blink-рендеринг; native
 запуск блокується до тіла тесту через ProcessSingleton socket. Firefox 153
-із тимчасовим встановленням пройшов. Подробиці — `docs/accessibility-roadmap.md`.
+із тимчасовим встановленням пройшов до підвищення релізної версії (5.4.0 + A11Y-02).
+Native E2E для фінальних метаданих 5.4.1 ще має пройти CI. Подробиці — `docs/accessibility-roadmap.md`.
