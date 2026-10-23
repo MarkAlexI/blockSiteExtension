@@ -561,6 +561,7 @@ class OptionsPage {
   }
 
   renderRules(viewItems, canEdit, isFiltered = false, disabledCategories = [], dailyUsageSeconds = {}) {
+    this.rulesUI.rememberDeletionFocus?.(this.rulesBody, () => this.addRuleButton);
     const active = document.activeElement;
     const focusedRow = active?.classList.contains('rule-toggle')
       ? [...this.rulesBody.children].find(row => row.querySelector('.rule-toggle') === active)
@@ -579,6 +580,7 @@ class OptionsPage {
     if (viewItems.length === 0) {
       this.rulesBody.appendChild(this.rulesUI.createEmptyRow(noRulesMessage, 5));
       restoreToggleFocus();
+      this.rulesUI.restoreDeletionFocus?.(this.rulesBody);
       return;
     }
 
@@ -597,6 +599,7 @@ class OptionsPage {
       this.rulesBody.appendChild(row);
     });
     restoreToggleFocus();
+    this.rulesUI.restoreDeletionFocus?.(this.rulesBody);
   }
 
   createRuleRow(item, index, canEdit, disabledCategories = [], dailyUsageSeconds = {}) {
@@ -627,9 +630,14 @@ class OptionsPage {
 
   async handleRuleAssignmentDeletion(event, ruleId, listId, expectedGeneration = null, expectedRevision = null) {
     if (!listId) return;
+    const deleteButton = event.currentTarget || event.target;
+    const key = `assignment:${ruleId}:${listId}`;
+    this.ruleDeletionRequests ||= new Set();
+    if (this.ruleDeletionRequests.has(key) || this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
+    this.ruleDeletionRequests.add(key);
+    const previousDisabled = deleteButton.getAttribute?.('aria-disabled') ?? null;
+    deleteButton.setAttribute?.('aria-disabled', 'true');
     try {
-      const deleteButton = event.target;
-      if (this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
 
       const hasPaidAccess = this.isPro === true || this.isLegacyUser === true;
       const settings = await SettingsManager.getSettings({
@@ -641,7 +649,8 @@ class OptionsPage {
         if (!isValid) return;
       }
 
-      this.rulesUI.handleRuleDeletion(
+      if (deleteButton.isConnected === false || this.rulesUI.deletion?.disposed) return;
+      await this.rulesUI.handleRuleDeletion(
         deleteButton,
         async () => {
           try {
@@ -654,18 +663,28 @@ class OptionsPage {
           }
         },
         isStrictMode,
-        t('rulelists_remove_assignment') || 'Remove from list'
+        deleteButton.textContent || t('rulelists_remove_assignment'),
+        { container: this.rulesBody, fallback: () => this.addRuleButton }
       );
     } catch (error) {
       this.logRulesMutationFailure('Handle rule assignment removal error:', error);
       this.handleRulesMutationError(error, 'errorupdatingrules');
+    } finally {
+      this.ruleDeletionRequests.delete(key);
+      if (previousDisabled === null) deleteButton.removeAttribute?.('aria-disabled');
+      else deleteButton.setAttribute?.('aria-disabled', previousDisabled);
     }
   }
 
   async handleRuleDeletion(event, ruleId, expectedGeneration = null, expectedRevision = null) {
+    const deleteButton = event.currentTarget || event.target;
+    const key = `rule:${ruleId}`;
+    this.ruleDeletionRequests ||= new Set();
+    if (this.ruleDeletionRequests.has(key) || this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
+    this.ruleDeletionRequests.add(key);
+    const previousDisabled = deleteButton.getAttribute?.('aria-disabled') ?? null;
+    deleteButton.setAttribute?.('aria-disabled', 'true');
     try {
-      const deleteButton = event.target;
-      if (this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
       
       const hasPaidAccess = this.isPro === true || this.isLegacyUser === true;
       const settings = await SettingsManager.getSettings({
@@ -677,7 +696,8 @@ class OptionsPage {
         if (!isValid) return;
       }
       
-      this.rulesUI.handleRuleDeletion(
+      if (deleteButton.isConnected === false || this.rulesUI.deletion?.disposed) return;
+      await this.rulesUI.handleRuleDeletion(
         deleteButton,
         async () => {
             try {
@@ -690,11 +710,16 @@ class OptionsPage {
             }
           },
           isStrictMode,
-          t('deletebtn')
+          t('deletebtn'),
+        { container: this.rulesBody, fallback: () => this.addRuleButton }
       );
     } catch (error) {
       this.logger.error("Handle deletion error:", error);
       this.rulesUI.showErrorMessage(t('errorremovingrule'));
+    } finally {
+      this.ruleDeletionRequests.delete(key);
+      if (previousDisabled === null) deleteButton.removeAttribute?.('aria-disabled');
+      else deleteButton.setAttribute?.('aria-disabled', previousDisabled);
     }
   }
   

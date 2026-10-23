@@ -335,6 +335,7 @@ class PopupPage {
       } else if (this.ruleToggleFocus && active !== document.body && active !== this.ruleToggleFocus.previous) {
         this.ruleToggleFocus = null;
       }
+      this.rulesUI?.rememberDeletionFocus?.(this.rulesContainer, () => this.addRuleButton);
       this.rulesContainer.innerHTML = '';
       
       const visibleRules = rules.filter(rule =>
@@ -371,6 +372,10 @@ class PopupPage {
       }
       this.updateStatus(visibleRules.length);
       this.showBlockThisSiteButton(rules);
+      // Saved rows are inserted by the existing zero-delay callbacks above.
+      setTimeout(() => {
+        if (refreshId === this.rulesRefreshId) this.rulesUI?.restoreDeletionFocus?.(this.rulesContainer);
+      }, 0);
       
     } catch (error) {
       if (refreshId !== this.rulesRefreshId) return;
@@ -682,8 +687,10 @@ class PopupPage {
       
       if (blockURLValue || (showButtons && !blockURLValue)) {
         const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
         deleteButton.className = 'delete-btn';
         deleteButton.textContent = t('deletebtn');
+        deleteButton.setAttribute('aria-label', `${t('deletebtn')}: ${blockURLValue}`);
         
         deleteButton.addEventListener('click', async () => {
           if (isMuted) return;
@@ -1036,13 +1043,18 @@ class PopupPage {
   }
   
   async handleRuleDeletion(deleteButton, ruleId, blockURL, ruleDiv, expectedGeneration = null, assignmentListId = GENERAL_RULE_LIST_ID, expectedRevision = null) {
+    const key = ruleDiv.dataset?.isWhitelist === 'true' ? `rule:${ruleId}` : `assignment:${ruleId}:${assignmentListId}`;
+    this.ruleDeletionRequests ||= new Set();
+    if (this.ruleDeletionRequests.has(key) || this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
+    this.ruleDeletionRequests.add(key);
+    const previousDisabled = deleteButton.getAttribute?.('aria-disabled') ?? null;
+    deleteButton.setAttribute?.('aria-disabled', 'true');
     try {
       if (!blockURL) {
         ruleDiv.remove();
         return;
       }
       
-      if (this.rulesUI.isDeleteConfirmationInProgress(deleteButton)) return;
       
       const hasPaidAccess = this.isPro === true || this.isLegacyUser === true;
       const settings = await SettingsManager.getSettings({
@@ -1057,7 +1069,8 @@ class PopupPage {
       }
       
       const isStrictMode = settings.mode === 'strict';
-      this.rulesUI.handleRuleDeletion(
+      if (deleteButton.isConnected === false || this.rulesUI.deletion?.disposed) return;
+      await this.rulesUI.handleRuleDeletion(
         deleteButton,
         async () => {
             try {
@@ -1065,6 +1078,7 @@ class PopupPage {
                 const response = ruleDiv.dataset.isWhitelist === 'true'
                   ? await this.rulesClient.deleteRule(ruleId, expectedGeneration, expectedRevision)
                   : await this.rulesClient.removeAssignment(ruleId, assignmentListId, expectedGeneration, expectedRevision);
+                await this.loadRules();
                 this.showRulesMutationResult(response, '- 1');
               } else {
                 ruleDiv.remove();
@@ -1077,12 +1091,17 @@ class PopupPage {
             }
           },
           isStrictMode,
-          t('deletebtn')
+          t('deletebtn'),
+          { container: this.rulesContainer, fallback: () => this.addRuleButton }
       );
       
     } catch (error) {
       this.logger.error("Handle deletion error:", error);
       customAlert(t('errorremovingrule'));
+    } finally {
+      this.ruleDeletionRequests.delete(key);
+      if (previousDisabled === null) deleteButton.removeAttribute?.('aria-disabled');
+      else deleteButton.setAttribute?.('aria-disabled', previousDisabled);
     }
   }
   
