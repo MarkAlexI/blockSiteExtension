@@ -16,7 +16,9 @@ export async function targetsAt(endpoint) {
 // Only called on the browser process/profile owned by this fixture. Clear the
 // restored pages before connectOverCDP: a page with an unresponsive renderer
 // must not block Playwright's page initialization. Keep one fresh blank tab.
-export async function prepareNativePages(endpoint, { waitForInstall = false, installTitle, timeout = 15_000, restoreSession = false } = {}) {
+export async function prepareNativePages(endpoint, {
+  waitForInstall = false, installTitle, timeout = 15_000, restoreSession = false, beforePageCleanup
+} = {}) {
   // A startup-restore scenario must observe Chrome's original restored tabs.
   // Never create a keeper, close a target or reload a document on this path.
   if (restoreSession) {
@@ -51,6 +53,10 @@ export async function prepareNativePages(endpoint, { waitForInstall = false, ins
   // title through t('header'); observe that real catalog value before closing
   // the fresh view. A literal key is an error, never a readiness fallback.
   const installObserved = targets.some(isInstallPage);
+  // A persistent installer is still attached while onInstalled and the first
+  // native i18n IPC finish. Disconnect it only after that observation, and
+  // before any HTTP target mutation. Keep the same readiness/cleanup deadline.
+  await beforePageCleanup?.();
   // A restored about:blank renderer can also be stale. Create the keeper before
   // closing any old target so headed Chrome never loses its last browser window.
   const response = await fetch(`${endpoint}/json/new?about:blank`, {

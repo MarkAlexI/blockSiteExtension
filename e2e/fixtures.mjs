@@ -140,12 +140,23 @@ class ExtensionHarness {
           path.join(extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
         this.nativeBrowser = await connectPreparedNativeBrowser(chromium, this.nativeOwner, {
           install: persistentInstall && !this.installed ? async browser => {
+            setupStage = 'persistent native installation';
+            this.nativeInstallMessages = [];
+            // Observe setup errors while the installer owns the native CDP
+            // sessions. Later HTTP snapshots cannot recover worker console.
+            const [installContext] = browser.contexts();
+            installContext.on('console', message => {
+              if (!['error', 'warning'].includes(message.type())) return;
+              this.nativeInstallMessages.push({ type: message.type(), text: message.text().slice(0,4000) });
+              if (this.nativeInstallMessages.length > 50) this.nativeInstallMessages.shift();
+            });
             const { pid } = await this.nativeOwner.diagnostics();
             this.startupInstallation = await installNativeStartupExtension(browser, extensionPath, this.manifest.version,
               15000, { browserPid: pid });
             await this.testInfo.attach('native-persistent-install', {
               contentType: 'application/json', body: JSON.stringify(this.startupInstallation)
             });
+            setupStage = 'wait for localized install view before installer disconnect';
           } : undefined,
           prepareOptions: { waitForInstall: !this.installed, installTitle, restoreSession },
           onPrepared: prepared => this.testInfo.attach('native-pages-before-cdp', {
@@ -165,6 +176,8 @@ class ExtensionHarness {
           await this.testInfo.attach('native-cdp-setup-failure', {
             contentType: 'application/json', body: JSON.stringify({
               ...await this.nativeOwner.diagnostics(), setupStage, error: String(error),
+              installation: this.startupInstallation ?? null,
+              installMessages: this.nativeInstallMessages ?? [],
               connected: this.nativeBrowser?.isConnected() ?? false
             })
           });

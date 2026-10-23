@@ -10,12 +10,17 @@ const worker = { id: 'worker', type: 'service_worker', url: 'chrome-extension://
 
 async function nativeModel(t, initial = [blank, options, worker]) {
   const targets = new Map(initial.map(target => [target.id, target]));
-  const connections = [], requests = [], events = [];
+  const connections = [], requests = [], events = [], observations = [];
+  let reads = 0, resolvePolled;
+  const polled = new Promise(resolve => { resolvePolled = resolve; });
   const server = createServer((request, response) => {
     requests.push({ method: request.method, url: request.url });
     response.setHeader('content-type', 'application/json');
     if (request.url === '/json/list') {
+      observations.push({ connected: connections.some(browser => browser.isConnected()),
+        targets: [...targets.values()] });
       response.end(JSON.stringify([...targets.values()]));
+      if (++reads === 2) resolvePolled();
     } else if (connections.some(browser => browser.isConnected())) {
       // A protocol-model guard: page cleanup belongs between CDP clients.
       // It does not assert that native Chrome always fails with an attached one.
@@ -53,10 +58,10 @@ async function nativeModel(t, initial = [blank, options, worker]) {
     connections.push(browser); events.push(`connect ${number}`);
     return browser;
   } };
-  return { owner, browserType, targets, requests, connections, events };
+  return { owner, browserType, targets, requests, connections, events, observations, polled };
 }
 
-test('persistent installation disconnects before HTTP cleanup and attaches a fresh scenario client', async t => {
+test('persistent installation observes localized readiness before disconnect, then cleans up and attaches a fresh client', async t => {
   const model = await nativeModel(t);
   const browser = await connectPreparedNativeBrowser(model.browserType, model.owner, {
     install: async installer => {
@@ -74,9 +79,104 @@ test('persistent installation disconnects before HTTP cleanup and attaches a fre
   });
   assert.equal(browser, model.connections[1]);
   assert.equal(browser.isConnected(), true);
+  assert.equal(model.observations[0].connected, true,
+    'native readiness is observed while the installer can still handle newly attached targets');
   assert.deepEqual(model.events, ['connect 1', 'install complete', 'disconnect 1', 'create keeper',
     'close target blank', 'close target options', 'prepared evidence', 'connect 2']);
   assert.deepEqual([...model.targets.values()], [worker, { ...blank, id: 'keeper' }]);
+});
+
+for (const pendingTitle of [null, 'Options page for BlockDistraction']) {
+  test(`persistent metadata cannot disconnect the installer before native Options readiness (${pendingTitle})`, async t => {
+    const initial = [blank, worker];
+    if (pendingTitle) initial.push({ ...options, title: pendingTitle });
+    const model = await nativeModel(t, initial);
+    let installs = 0;
+    const preparing = connectPreparedNativeBrowser(model.browserType, model.owner, {
+      install: async () => { installs++; },
+      prepareOptions: { waitForInstall: true, installTitle: options.title, timeout: 2000 }
+    });
+    await model.polled;
+    const connectedWhilePending = model.connections[0].isConnected();
+    const pendingRequests = model.requests.slice();
+    model.targets.set(options.id, options);
+    const browser = await preparing;
+    assert.equal(connectedWhilePending, true, 'metadata alone does not release the installer');
+    assert.equal(pendingRequests.every(request => request.url === '/json/list'), true,
+      'pending readiness only observes targets, without cleanup or a second install');
+    assert.equal(installs, 1);
+    assert.equal(model.connections.length, 2);
+    assert.equal(browser, model.connections[1]);
+    assert.equal(model.connections[0].isConnected(), false);
+    assert.deepEqual([...model.targets.values()], [worker, { ...blank, id: 'keeper' }]);
+  });
+}
+
+test('a missing persistent install page fails with one install and one disconnect, without cleanup or scenario attach', async t => {
+  const model = await nativeModel(t, [blank, worker]);
+  let installs = 0;
+  await assert.rejects(connectPreparedNativeBrowser(model.browserType, model.owner, {
+    install: async () => { installs++; },
+    prepareOptions: { waitForInstall: true, installTitle: options.title, timeout: 100 }
+  }), /install page not observed/);
+  assert.equal(installs, 1);
+  assert.equal(model.connections.length, 1);
+  assert.equal(model.observations.every(observation => observation.connected), true);
+  assert.equal(model.connections[0].isConnected(), false);
+  assert.equal(model.events.filter(event => event === 'disconnect 1').length, 1);
+  assert.equal(model.requests.every(request => request.url === '/json/list'), true);
+  assert.deepEqual([...model.targets.values()], [blank, worker]);
+});
+
+for (const cleanupFails of [false, true]) {
+  test(`persistent localization failure is preserved before cleanup (disconnect failure: ${cleanupFails})`, async t => {
+    const untranslated = { ...options, title: 'header' };
+    const model = await nativeModel(t, [blank, worker, untranslated]);
+    let disconnects = 0;
+    await assert.rejects(connectPreparedNativeBrowser(model.browserType, model.owner, {
+      install: async installer => {
+        const close = installer.close;
+        installer.close = async () => {
+          disconnects++;
+          if (cleanupFails) throw new Error('Installer disconnect failed');
+          await close();
+        };
+      },
+      prepareOptions: { waitForInstall: true, installTitle: options.title }
+    }), /install localization failed before page cleanup/);
+    assert.equal(disconnects, 1);
+    assert.equal(model.connections.length, 1);
+    assert.equal(model.observations[0].connected, true);
+    assert.deepEqual(model.requests, [{ method: 'GET', url: '/json/list' }]);
+    assert.deepEqual([...model.targets.values()], [blank, worker, untranslated]);
+  });
+}
+
+test('persistent setup waits for installer disconnect to finish before any target mutation', async t => {
+  const model = await nativeModel(t);
+  let release, disconnecting;
+  const atDisconnect = new Promise(resolve => { disconnecting = resolve; });
+  const released = new Promise(resolve => { release = resolve; });
+  const preparing = connectPreparedNativeBrowser(model.browserType, model.owner, {
+    install: async installer => {
+      const close = installer.close;
+      installer.close = async () => {
+        disconnecting();
+        await released;
+        await close();
+      };
+    },
+    prepareOptions: { waitForInstall: true, installTitle: options.title }
+  });
+  await atDisconnect;
+  const observations = model.observations.slice();
+  const pendingRequests = model.requests.slice();
+  release();
+  await preparing;
+  assert.equal(observations.length, 1, 'localized readiness precedes the disconnect attempt');
+  assert.equal(observations[0].connected, true);
+  assert.deepEqual(pendingRequests, [{ method: 'GET', url: '/json/list' }]);
+  assert.equal(model.events.filter(event => event === 'disconnect 1').length, 1);
 });
 
 test('native restoration observes original tabs without installation, target mutation or a second connection', async t => {
@@ -120,14 +220,14 @@ for (const cleanupFails of [false, true]) {
   });
 }
 
-test('a failed installer disconnect aborts before HTTP cleanup or scenario attach', async t => {
+test('a failed installer disconnect aborts before target mutation or scenario attach', async t => {
   const model = await nativeModel(t);
   const failure = new Error('Installer disconnect failed');
   await assert.rejects(connectPreparedNativeBrowser(model.browserType, model.owner, {
     install: async installer => { installer.close = async () => { throw failure; }; }
   }), error => error === failure);
   assert.equal(model.connections.length, 1);
-  assert.deepEqual(model.requests, []);
+  assert.deepEqual(model.requests, [{ method: 'GET', url: '/json/list' }]);
   assert.deepEqual([...model.targets.values()], [blank, options, worker]);
 });
 

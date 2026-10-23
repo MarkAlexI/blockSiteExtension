@@ -296,6 +296,24 @@ launch/restart старі Options/Popup закриваються через loop
 `native-pages-before-cdp` зберігає targets, а `native-cdp-setup-failure` —
 targets, PID, exit status та stderr. Timeout і retries набору не збільшені.
 
+Persistent startup setup встановлює extension через справжній `Load unpacked`.
+Запис `UNPACKED/ENABLED` підтверджує browser registration, але не завершення
+`onInstalled`. Installer CDP client залишається підключеним до спостереження
+Options із перекладеним title. Лише після цього він від'єднується; HTTP cleanup
+починається після успішного disconnect, а сценарій отримує новий CDP client.
+Очікування й cleanup використовують той самий deadline. Missing page або literal
+`header` зупиняють setup, без повторної інсталяції, reload або ручного відкриття
+Options. Restore path як і раніше не змінює початкові вкладки.
+
+Цей порядок враховує те, що [Playwright 1.62.1 auto-attach](https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/chromium/crBrowser.ts)
+використовує `waitForDebuggerOnStart`, а [worker setup](https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/chromium/crServiceWorker.ts)
+асинхронно надсилає `Runtime.runIfWaitingForDebugger`. Це конкретна setup race,
+яку перевіряють protocol-model regressions, але вони не доводять, що саме вона
+спричинила попереднє native CI падіння. Для такого підтвердження потрібен новий
+native run. `native-cdp-setup-failure` також зберігає installation receipt та
+до 50 warning/error console messages інсталятора (до 4000 символів кожне),
+щоб відрізнити незавершений setup від production initialization failure.
+
 Options focus smoke вставляє URL справжньою командою browser input.
 Capture listener перевіряє `isTrusted`, початковий URL focus і переходить
 у друге поле в тому самому `input` event. Межа `<100 ms` зберігається;
