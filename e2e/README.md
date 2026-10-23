@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.4.9**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.4.10**. Playwright: **1.62.1**, Node.js: **22+**.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 
