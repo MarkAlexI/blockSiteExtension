@@ -1,6 +1,6 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.4.7**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.4.8**. Playwright: **1.62.1**, Node.js: **22+**.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 
@@ -1118,3 +1118,28 @@ pairs pass. No suite deadline or retry policy changes.
 Base 5.4.6 native CI is green: [Chromium 52/52](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/39930252787)
 and [Firefox 53/53](https://github.com/MarkAlexI/blockSiteFirefox/actions/runs/39929856345).
 The new 5.4.7 full headed CI still needs to run after applying the patch.
+
+## A11Y-04 / 5.4.8: Settings field validation and save feedback (56)
+
+Scenario 56 uses real Options controls and trusted Enter, real rule validation
+and commits, per-field descriptions, retained drafts, Daily Limit rejection,
+duplicate Save guards and Add/Edit/Search focus outcomes. Native alert must not
+open. A forwarding RPC gate controls timing before dispatch; one successful add
+reply gets a controlled pending flag to exercise the UI state. This is not a
+native DNR failure simulation, and no mutation is retried.
+
+The error messages share the existing five columns below the editor and provide
+localized links to each invalid field. Six loopback layouts per engine cover
+narrow screens, RTL, large base text and forced-colors; all twelve saved-column
+comparisons match the baseline. The 36 error states have no axe WCAG A/AA
+violations, with some color-contrast results incomplete. Node results:
+Chromium 1985/1985, Firefox 1964/1964, validation and 70 contrast pairs.
+Registered totals: **54 Chromium / 55 Firefox**. Native Firefox 153 scenario 56
+passes; baseline 5.4.7 fails at the missing persistent Options status.
+
+Base 5.4.7 CI: [Firefox 54/54](https://github.com/MarkAlexI/blockSiteFirefox/actions/runs/39938638076)
+and [Chromium 52/53](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/39938463923).
+Scenario 55 passes in both. Chromium startup restore fails in setup while
+waiting for install Options. The artifact confirms enabled persistent unpacked
+5.4.7 and a live worker/process, with no Options target observed. The missing
+page's cause is not established by these artifacts; its assertion is retained.
