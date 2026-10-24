@@ -459,9 +459,9 @@ class ExtensionHarness {
     await page.locator(`tr[data-rule-id="${id}"] .delete-btn`).click();
   }
 
-  async importBackup(page, backup) {
-    const filename = path.join(this.profile, 'reader-backup.json');
-    await writeFile(filename, JSON.stringify(backup));
+  async importBackup(page, backup, { filename: name = 'reader-backup.json', reuse = false } = {}) {
+    const filename = path.join(this.profile, name);
+    if (!reuse) await writeFile(filename, JSON.stringify(backup));
     // Uploading a file does not activate a background tab. Model the user's
     // foreground import request before the production prompt ownership checks.
     await page.bringToFront();
