@@ -14,9 +14,14 @@ permissions:
   contents: read
 
 jobs:
-  e2e:
+  scenarios:
+    name: scenarios (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [core, lifecycle]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -47,12 +52,14 @@ jobs:
           PY
       - name: Run extension scenarios
         working-directory: e2e
+        env:
+          BD_E2E_GROUP: ${{ matrix.group }}
         run: xvfb-run -a npm test
       - name: Upload reports and traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bd-chromium-e2e-${{ github.sha }}
+          name: bd-chromium-e2e-${{ github.sha }}-${{ matrix.group }}
           path: |
             e2e/playwright-report/
             e2e/test-results/
@@ -61,3 +68,15 @@ jobs:
             dist/*-cws.zip.build.json
           if-no-files-found: warn
           retention-days: 14
+
+  # Preserve the existing required-check name; both groups must finish green.
+  e2e:
+    if: ${{ always() }}
+    needs: scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require both scenario groups
+        env:
+          SCENARIO_RESULT: ${{ needs.scenarios.result }}
+        run: test "$SCENARIO_RESULT" = success

@@ -2,6 +2,10 @@
 
 Цільова версія: **5.4.14**. Playwright: **1.62.1**, Node.js: **22+**.
 
+CI виконує той самий набір у групах `core` (52 сценарії) та `lifecycle` (9).
+Команди, спільний check `e2e` і межі перевірки описані в
+[CI groups](ci-groups.md). Локальний `npm test` запускає всі 61 сценарій.
+
 ## Startup CDP setup correction (2026-10-23, tests only)
 
 На `5e94460ed23fa9f653b4628107794e85782882db`
