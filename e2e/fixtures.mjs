@@ -462,6 +462,9 @@ class ExtensionHarness {
   async importBackup(page, backup) {
     const filename = path.join(this.profile, 'reader-backup.json');
     await writeFile(filename, JSON.stringify(backup));
+    // Uploading a file does not activate a background tab. Model the user's
+    // foreground import request before the production prompt ownership checks.
+    await page.bringToFront();
     await page.locator('#importFileInput').setInputFiles(filename);
   }
 

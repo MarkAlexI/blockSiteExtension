@@ -113,6 +113,7 @@ test('UI deletion and JSON import update both Options, usage and actual navigati
   await expect(rows(b)).toHaveCount(0);
   const { assignment: always, ...target } = basicPayload('imported.bd-e2e.test');
   const backup = { rules: [{ id: 99, ...target, isWhitelist: false, assignments: [always] }] };
+  await a.bringToFront();
   await a.locator('#importFileInput').setInputFiles({
     name: 'bd-e2e-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup))
   });
