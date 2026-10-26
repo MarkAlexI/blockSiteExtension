@@ -1,5 +1,9 @@
 # BlockDistraction Chromium E2E
 
+## CI readiness correction (tests only, 2026-10-26)
+
+[Trace diagnosis and verification](ci-readiness-2026-10-26.md) cover the guarded Start/Stop transition and the owner-renewed CPU workload. Runtime version remains 5.4.15.
+
 ## Overdue timers and startup measurement (tests only)
 
 [Scenario 65](overdue-alarms.md) covers real process pause and native overdue alarms.

@@ -7,7 +7,8 @@
 завершує браузер через native `Browser.close`, перевіряє exit і запускає новий
 PID з тим самим профілем. Перевстановлення та збережений session/global marker
 є помилками. 12 справжніх HTTP-вкладок відновлюються браузером із loopback
-сервера; bounded Web Workers створюють CPU pressure. Звіти про реальні CPU
+сервера; Web Workers створюють CPU pressure з поновлюваною owner lease (20 s).
+Без відповіді owner Worker зупиняється; 8 ms / 32 ms збережені. Звіти про реальні CPU
 chunks щонайменше двох різних вкладок повинні перекривати Popup measurement.
 Лише кількість вкладок або ввімкнений workload flag доказом не вважаються.
 
@@ -60,3 +61,5 @@ browser activity logging додають overhead, тому результати 
 Команда: `cd e2e && xvfb-run -a npm test -- startup-responsiveness.spec.mjs`.
 Потрібні Linux/X11, openbox, xdotool/XTEST, Python для сусіднього overdue job;
 наявний workflow встановлює залежності. Production telemetry не додається.
+
+Корекція після першого CI measurement: [діагноз за trace і часовими мітками](ci-readiness-2026-10-26.md). Поточний звіт також розділяє setup overhead у `preparation` та містить `pressurePolicy`/`pressureProducers`.

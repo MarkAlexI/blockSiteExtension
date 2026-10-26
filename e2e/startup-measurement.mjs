@@ -2,36 +2,72 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 
+const pressurePolicy = { leaseMs: 20_000, chunkMs: 8, intervalMs: 32 };
+
+// Serialized into the loopback HTTP worker. Healthy owner replies renew the
+// same bounded lease; a lost owner, an expired lease or explicit Stop ends it.
+export function runPressureWorker({ leaseMs, chunkMs, intervalMs }) {
+  let busyMs = 0, running = true, expiresAt = performance.now() + leaseMs;
+  const stop = reason => {
+    if (!running) return;
+    running = false; clearInterval(timer); postMessage({ type: 'stopped', reason });
+  };
+  const timer = setInterval(() => {
+    if (performance.now() >= expiresAt) { stop('owner_lease_expired'); return; }
+    const start = performance.now();
+    while (performance.now() - start < chunkMs) {}
+    busyMs += performance.now() - start;
+    postMessage({ type: 'chunk', busyMs, start: performance.timeOrigin + start,
+      end: performance.timeOrigin + performance.now() });
+  }, intervalMs);
+  globalThis.onmessage = ({ data }) => {
+    if (!running || data?.type !== 'lease') return;
+    if (data.continue === false) { stop('owner_stopped'); return; }
+    if (data.continue === true && data.leaseMs === leaseMs && performance.now() < expiresAt) {
+      expiresAt = performance.now() + leaseMs;
+    }
+  };
+}
+
 // A loopback server survives the browser exit and serves newly restored tabs.
 // Each tab has a bounded real CPU workload, not emulated CDP CPU throttling.
 export async function createPressureFixture() {
-  const events = [];
+  const events = [], producers = new Map();
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://localhost');
     response.setHeader('cache-control', 'no-store');
     if (url.pathname === '/worker.js') {
       response.setHeader('content-type', 'text/javascript');
-      response.end(`let busyMs=0; const end=performance.now()+20000;
-        const timer=setInterval(()=>{const start=performance.now();
-          while(performance.now()-start<8){} busyMs+=performance.now()-start;
-          postMessage({busyMs,start:performance.timeOrigin+start,end:performance.timeOrigin+performance.now()});
-          if(performance.now()>=end)clearInterval(timer);
-        },32);`);
+      response.end(`(${runPressureWorker.toString()})(${JSON.stringify(pressurePolicy)});`);
     } else if (url.pathname === '/pulse') {
-      events.push({ at: Date.now(), id: url.searchParams.get('id'),
+      const event = { at: Date.now(), id: url.searchParams.get('id'),
         origin: Number(url.searchParams.get('origin')), busyMs: Number(url.searchParams.get('busy')),
-        chunkStart:Number(url.searchParams.get('start')),chunkEnd:Number(url.searchParams.get('end')) });
-      response.writeHead(204); response.end();
+        chunkStart:Number(url.searchParams.get('start')),chunkEnd:Number(url.searchParams.get('end')) };
+      if (!/^\/tab\/(?:[0-9]|1[01])$/.test(event.id || '') ||
+          ![event.origin,event.busyMs,event.chunkStart,event.chunkEnd].every(Number.isFinite) ||
+          event.origin <= 0 || event.busyMs <= 0 || event.chunkStart < event.origin || event.chunkEnd < event.chunkStart) {
+        response.writeHead(400); response.end(); return;
+      }
+      events.push(event);
+      const key = `${event.id}:${event.origin}`;
+      const producer = producers.get(key) || { id:event.id,origin:event.origin,firstAt:event.at,renewals:0 };
+      Object.assign(producer,{lastAt:event.at,renewals:producer.renewals+1}); producers.set(key,producer);
+      response.writeHead(200,{'content-type':'application/json'});
+      response.end(JSON.stringify({ type:'lease',continue:true,leaseMs:pressurePolicy.leaseMs }));
     } else if (/^\/tab\/\d+$/.test(url.pathname)) {
       response.setHeader('content-type', 'text/html');
       response.end(`<!doctype html><title>BD startup load ${url.pathname}</title><p>Bounded local CPU fixture</p>
         <script>const w=new Worker('/worker.js');
-        w.onmessage=e=>fetch('/pulse?id=${url.pathname}&origin='+performance.timeOrigin+'&busy='+e.data.busyMs+'&start='+e.data.start+'&end='+e.data.end).catch(()=>{});</script>`);
+        w.onmessage=e=>{if(e.data.type!=='chunk')return;
+          fetch('/pulse?id=${url.pathname}&origin='+performance.timeOrigin+'&busy='+e.data.busyMs+'&start='+e.data.start+'&end='+e.data.end)
+            .then(reply=>{if(!reply.ok)throw new Error('owner unavailable');return reply.json()})
+            .then(lease=>w.postMessage(lease)).catch(()=>w.terminate());};</script>`);
     } else { response.writeHead(404); response.end(); }
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const origin = `http://127.0.0.1:${server.address().port}`;
-  return { events, urls: Array.from({length:12}, (_,i) => `${origin}/tab/${i}`),
+  return { events, policy:pressurePolicy, get producers(){return [...producers.values()];},
+    urls: Array.from({length:12}, (_,i) => `${origin}/tab/${i}`),
     owns: url => url.origin === origin,
     async close() { const closed = once(server,'close'); server.close(); server.closeAllConnections(); await closed; } };
 }

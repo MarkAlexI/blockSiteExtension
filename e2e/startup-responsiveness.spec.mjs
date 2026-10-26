@@ -53,15 +53,20 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
       restoreSession:true,activityLog:true,args:['--host-resolver-rules=MAP blockdistraction.com ~NOTFOUND']});
     report.spawnToCdpMs=Date.now()-report.launchedAt;
     report.afterPid=(await e.nativeOwner.diagnostics()).pid;
+    let preparedAt=Date.now(); report.preparation={};
     e.nativeBrowser=await chromium.connectOverCDP(e.nativeOwner.webSocketDebuggerUrl,{noDefaults:true,isLocal:true});
+    report.preparation.cdpAttachMs=Date.now()-preparedAt; preparedAt=Date.now();
     [e.context]=e.nativeBrowser.contexts(); await e.configureContext();
+    report.preparation.traceAndRoutesMs=Date.now()-preparedAt; preparedAt=Date.now();
     await expect.poll(()=>new Set(fixture.events.filter(event=>event.origin>=report.launchedAt).map(event=>event.id)).size).toBeGreaterThanOrEqual(2);
     report.pressureReadyMs=Date.now()-report.launchedAt;
+    report.preparation.pressureWaitMs=Date.now()-preparedAt; preparedAt=Date.now();
     // A minimal packaged page sends no production runtime messages on load.
     // Do not obtain/warm the worker or poll startup readiness before this input.
     const host=await e.context.newPage();
     await host.goto(`chrome-extension://${e.id}/blocked.html`);
     await host.evaluate(installStartupMeasurement,{expectedRows:1});
+    report.preparation.hostSetupMs=Date.now()-preparedAt;
     await host.locator('#__bdMeasureOpen').click();
     await expect.poll(()=>host.evaluate(()=>Boolean(window.__bdStartupMeasure.readyMs !== undefined &&
       window.__bdStartupMeasure.firstReplyMs !== undefined && window.__bdStartupMeasure.openResolvedMs !== undefined))).toBe(true);
@@ -122,9 +127,11 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
     report.installEvents=log.events.filter(v=>v.api==='runtime.onInstalled').length;
     report.firstMessageCallbacks=nativeMessageCallbacks(log,{extensionId:e.id,producerUrl:host.url()}).length;
     report.pressure=fixture.events;
+    report.pressurePolicy=fixture.policy; report.pressureProducers=fixture.producers;
     assertStartupMeasurement(report);
   } finally {
     report.pressure=fixture.events;
+    report.pressurePolicy=fixture.policy; report.pressureProducers=fixture.producers;
     try { await info.attach('cold-startup-popup-measurement',{body:JSON.stringify(report,null,2),contentType:'application/json'}); }
     finally { await fixture.close(); }
   }
