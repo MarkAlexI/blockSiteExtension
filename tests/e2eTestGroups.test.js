@@ -10,17 +10,19 @@ test('the full E2E list includes every actual spec file exactly once', async () 
   assert.deepEqual(selectTestFiles(), testFiles);
 });
 
-test('the two CI groups are nonempty, disjoint and cover the full suite', () => {
-  const core = selectTestFiles('core'), lifecycle = selectTestFiles('lifecycle');
-  assert.ok(core.length > 0); assert.ok(lifecycle.length > 0);
-  assert.deepEqual(core.filter(file => lifecycle.includes(file)), []);
-  assert.deepEqual([...core, ...lifecycle].sort(), [...testFiles].sort());
+test('the CI groups are nonempty, disjoint and cover the full suite', () => {
+  const groups = ['core', 'lifecycle', 'overdue'].map(selectTestFiles);
+  assert.ok(groups.every(group => group.length > 0));
+  const combined = groups.flat();
+  assert.equal(new Set(combined).size, combined.length);
+  assert.deepEqual(combined.sort(), [...testFiles].sort());
+  assert.deepEqual(selectTestFiles('overdue'), ['overdue.spec.mjs']);
 });
 
 test('long expiry and idle-alarm scenarios keep their native tests in the lifecycle group', () => {
   const lifecycle = selectTestFiles('lifecycle');
   for (const file of ['scheduled-expiry.spec.mjs', 'idle-native.spec.mjs', 'alarm-batch-native.spec.mjs',
-    'cold-message-native.spec.mjs', 'startup-restore-native.spec.mjs']) assert.ok(lifecycle.includes(file), file);
+    'cold-message-native.spec.mjs', 'startup-restore-native.spec.mjs', 'startup-responsiveness.spec.mjs']) assert.ok(lifecycle.includes(file), file);
 });
 
 test('an invalid group fails instead of silently selecting an incomplete suite', () => {

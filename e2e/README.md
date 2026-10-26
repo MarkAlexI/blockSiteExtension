@@ -1,17 +1,23 @@
 # BlockDistraction Chromium E2E
 
+## Overdue timers and startup measurement (tests only)
+
+[Scenario 65](overdue-alarms.md) covers real process pause and native overdue alarms.
+[Scenario 66](startup-responsiveness.md) measures a full cold browser launch and native Popup under CPU pressure.
+Runtime version remains 5.4.15.
+
 ## Blocking screens 5.4.15
 
 [Scenario 64 and verification notes](blocking-pages.md) cover localized
 blocking/redirect screens, pending/failed close requests, native keyboard retry,
-real DNR navigation and safe fallback. Current inventory: **62 = 53 core + 9 lifecycle**.
+real DNR navigation and safe fallback. Current inventory: **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
 Цільова версія: **5.4.15**. Playwright: **1.62.1**, Node.js: **22+**.
 
-CI виконує той самий набір у групах `core` (53 сценарії) та `lifecycle` (9).
+CI виконує той самий набір у групах `core` (53), `lifecycle` (10) та `overdue` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
-[CI groups](ci-groups.md). Локальний `npm test` запускає всі 62 сценарії.
+[CI groups](ci-groups.md). Локальний `npm test` запускає всі 64 сценарії.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 

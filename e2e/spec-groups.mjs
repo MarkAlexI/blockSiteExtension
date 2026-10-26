@@ -1,5 +1,5 @@
 // Preserve the unfiltered local suite and its ordering. CI runs the same files
-// in two isolated jobs; native timers remain serial inside each job.
+// in isolated jobs; native timers remain serial inside each job.
 export const testFiles = Object.freeze([
   'dialogs.spec.mjs',
   'password-dialog.spec.mjs',
@@ -20,7 +20,9 @@ export const testFiles = Object.freeze([
   'session-restore-native.spec.mjs',
   'frames-native.spec.mjs',
   'pro-feedback.spec.mjs',
-  'startup-restore-native.spec.mjs'
+  'startup-restore-native.spec.mjs',
+  'overdue.spec.mjs',
+  'startup-responsiveness.spec.mjs'
 ]);
 
 const lifecycleFiles = new Set([
@@ -29,10 +31,13 @@ const lifecycleFiles = new Set([
   'idle-native.spec.mjs',
   'alarm-batch-native.spec.mjs',
   'cold-message-native.spec.mjs',
-  'startup-restore-native.spec.mjs'
+  'startup-restore-native.spec.mjs',
+  'startup-responsiveness.spec.mjs'
 ]);
 
 export function selectTestFiles(group = 'all') {
-  if (!['all', 'core', 'lifecycle'].includes(group)) throw new Error(`Unknown BD_E2E_GROUP: ${group}`);
-  return testFiles.filter(file => group === 'all' || lifecycleFiles.has(file) === (group === 'lifecycle'));
+  if (!['all', 'core', 'lifecycle', 'overdue'].includes(group)) throw new Error(`Unknown BD_E2E_GROUP: ${group}`);
+  return testFiles.filter(file => group === 'all' ||
+    (file === 'overdue.spec.mjs' ? group === 'overdue' :
+      group !== 'overdue' && lifecycleFiles.has(file) === (group === 'lifecycle')));
 }

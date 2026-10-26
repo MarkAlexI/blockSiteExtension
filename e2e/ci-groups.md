@@ -1,4 +1,22 @@
-# Chromium E2E groups — 2026-10-24
+# Chromium E2E groups
+
+## Current test addition — 2026-10-26
+
+Version 5.4.15 now enumerates **64 = 53 core + 10 lifecycle + 1 overdue**.
+The cold-startup/Popup measurement is in lifecycle; the process-pause scenario
+has its own overdue job. Every group keeps the existing 20-minute job limit,
+serial tests and zero retries. Required check `e2e` requires the entire matrix.
+Use `BD_E2E_GROUP=overdue npm test` for that new group.
+
+The preceding 5.4.15 base already passed both original CI groups in
+[run 40278059684](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/40278059684).
+The new groups and measurement require CI after applying this patch.
+See [overdue evidence and limits](overdue-alarms.md) and
+[measurement semantics](startup-responsiveness.md).
+
+The following dated record describes the original two-group change on
+2026-10-24. Its counts and then-pending acceptance refer to that historical
+change, not the current inventory.
 
 ## Evidence and change
 
