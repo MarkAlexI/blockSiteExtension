@@ -8,8 +8,9 @@ import { createPressureFixture } from '../e2e/startup-measurement.mjs';
 async function workerFixture(run) {
   const fixture=await createPressureFixture();
   try {
+    fixture.startColdLaunch(1000);
     const base=new URL(fixture.urls[0]).origin;
-    const source=await (await fetch(base+'/worker.js')).text();
+    const source=await (await fetch(base+'/worker.js?origin=1000')).text();
     let clock=0, id=0;const timers=new Map(),messages=[];
     const realm={performance:{timeOrigin:1_000_000,now:()=>clock++},
       setInterval:fn=>{timers.set(++id,fn);return id;},clearInterval:key=>timers.delete(key),

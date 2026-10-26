@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 
-const pressurePolicy = { leaseMs: 20_000, chunkMs: 8, intervalMs: 32 };
+const pressurePolicy = { leaseMs: 20_000, chunkMs: 8, intervalMs: 32, receiptIntervalMs: 250 };
 
 // Serialized into the loopback HTTP worker. Healthy owner replies renew the
 // same bounded lease; a lost owner, an expired lease or explicit Stop ends it.
@@ -29,39 +29,82 @@ export function runPressureWorker({ leaseMs, chunkMs, intervalMs }) {
   };
 }
 
+// Preserve every CPU chunk, with only one batched HTTP receipt in flight per
+// document. CPU intensity is independent of this reporting interval.
+export function runPressurePage({ id, receiptIntervalMs }) {
+  const worker = new Worker('/worker.js?origin=' + performance.timeOrigin);
+  const chunks = [];
+  let pending = false, stopped = false;
+  const stop = () => { if (stopped) return; stopped = true; clearInterval(timer); worker.terminate(); };
+  const timer = setInterval(async () => {
+    if (stopped || pending || !chunks.length) return;
+    pending = true;
+    const batch = chunks.splice(0);
+    try {
+      const response = await fetch('/pulse?id=' + id + '&origin=' + performance.timeOrigin,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(batch) });
+      if (!response.ok) throw new Error('owner unavailable');
+      const lease = await response.json();
+      if (!stopped) worker.postMessage(lease);
+    } catch { stop(); }
+    finally { pending = false; }
+  }, receiptIntervalMs);
+  worker.onmessage = ({ data }) => {
+    if (stopped) return;
+    if (data.type === 'chunk') chunks.push(data);
+    else if (data.type === 'stopped' || data.type === 'idle') stop();
+  };
+}
+
 // A loopback server survives the browser exit and serves newly restored tabs.
 // Each tab has a bounded real CPU workload, not emulated CDP CPU throttling.
 export async function createPressureFixture() {
   const events = [], producers = new Map();
-  const server = createServer((request, response) => {
+  let coldLaunchAt = null, closing;
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
     response.setHeader('cache-control', 'no-store');
     if (url.pathname === '/worker.js') {
       response.setHeader('content-type', 'text/javascript');
-      response.end(`(${runPressureWorker.toString()})(${JSON.stringify(pressurePolicy)});`);
+      const origin = Number(url.searchParams.get('origin'));
+      const enabled = !closing && coldLaunchAt !== null && Number.isFinite(origin) && origin >= coldLaunchAt;
+      response.end(enabled ? `(${runPressureWorker.toString()})(${JSON.stringify(pressurePolicy)});`
+        : `postMessage({type:'idle'});`);
     } else if (url.pathname === '/pulse') {
-      const event = { at: Date.now(), id: url.searchParams.get('id'),
-        origin: Number(url.searchParams.get('origin')), busyMs: Number(url.searchParams.get('busy')),
-        chunkStart:Number(url.searchParams.get('start')),chunkEnd:Number(url.searchParams.get('end')) };
-      if (!/^\/tab\/(?:[0-9]|1[01])$/.test(event.id || '') ||
-          ![event.origin,event.busyMs,event.chunkStart,event.chunkEnd].every(Number.isFinite) ||
-          event.origin <= 0 || event.busyMs <= 0 || event.chunkStart < event.origin || event.chunkEnd < event.chunkStart) {
+      const id = url.searchParams.get('id'), origin = Number(url.searchParams.get('origin'));
+      let chunks;
+      try {
+        if (request.method === 'POST') {
+          let body = '';
+          for await (const part of request) {
+            body += part;
+            if (body.length > 128_000) { response.writeHead(413); response.end(); return; }
+          }
+          chunks = JSON.parse(body);
+        } else if (request.method === 'GET') chunks = [{ busyMs:Number(url.searchParams.get('busy')),
+          start:Number(url.searchParams.get('start')), end:Number(url.searchParams.get('end')) }];
+      } catch { response.writeHead(400); response.end(); return; }
+      if (!/^\/tab\/(?:[0-9]|1[01])$/.test(id || '') || !Number.isFinite(origin) || origin <= 0 ||
+          !Array.isArray(chunks) || !chunks.length || chunks.length > 1000 ||
+          chunks.some(c => !c || ![c.busyMs,c.start,c.end].every(Number.isFinite) ||
+            c.busyMs <= 0 || c.start < origin || c.end < c.start)) {
         response.writeHead(400); response.end(); return;
       }
-      events.push(event);
-      const key = `${event.id}:${event.origin}`;
-      const producer = producers.get(key) || { id:event.id,origin:event.origin,firstAt:event.at,renewals:0 };
-      Object.assign(producer,{lastAt:event.at,renewals:producer.renewals+1}); producers.set(key,producer);
+      const enabled = !closing && coldLaunchAt !== null && origin >= coldLaunchAt;
+      if (enabled) {
+        const at = Date.now();
+        events.push(...chunks.map(c => ({ at,id,origin,busyMs:c.busyMs,chunkStart:c.start,chunkEnd:c.end })));
+        const key = `${id}:${origin}`;
+        const producer = producers.get(key) || { id,origin,firstAt:at,renewals:0 };
+        Object.assign(producer,{lastAt:at,renewals:producer.renewals+1}); producers.set(key,producer);
+      }
       response.writeHead(200,{'content-type':'application/json'});
-      response.end(JSON.stringify({ type:'lease',continue:true,leaseMs:pressurePolicy.leaseMs }));
+      response.end(JSON.stringify({ type:'lease',continue:enabled,leaseMs:pressurePolicy.leaseMs }));
     } else if (/^\/tab\/\d+$/.test(url.pathname)) {
       response.setHeader('content-type', 'text/html');
       response.end(`<!doctype html><title>BD startup load ${url.pathname}</title><p>Bounded local CPU fixture</p>
-        <script>const w=new Worker('/worker.js');
-        w.onmessage=e=>{if(e.data.type!=='chunk')return;
-          fetch('/pulse?id=${url.pathname}&origin='+performance.timeOrigin+'&busy='+e.data.busyMs+'&start='+e.data.start+'&end='+e.data.end)
-            .then(reply=>{if(!reply.ok)throw new Error('owner unavailable');return reply.json()})
-            .then(lease=>w.postMessage(lease)).catch(()=>w.terminate());};</script>`);
+        <script>(${runPressurePage.toString()})(${JSON.stringify({id:url.pathname,
+          receiptIntervalMs:pressurePolicy.receiptIntervalMs})});</script>`);
     } else { response.writeHead(404); response.end(); }
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -69,7 +112,17 @@ export async function createPressureFixture() {
   return { events, policy:pressurePolicy, get producers(){return [...producers.values()];},
     urls: Array.from({length:12}, (_,i) => `${origin}/tab/${i}`),
     owns: url => url.origin === origin,
-    async close() { const closed = once(server,'close'); server.close(); server.closeAllConnections(); await closed; } };
+    startColdLaunch(at) {
+      assert.ok(coldLaunchAt === null && !closing, 'cold workload can be armed only once');
+      assert.ok(Number.isFinite(at) && at > 0, 'cold workload needs the new browser launch time');
+      coldLaunchAt = at;
+    },
+    close() {
+      if (!closing) {
+        closing = once(server,'close'); server.close(); server.closeAllConnections();
+      }
+      return closing;
+    } };
 }
 
 // Runs in a minimal packaged blocked.html host, before Popup is opened. The

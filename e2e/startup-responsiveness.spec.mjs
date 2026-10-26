@@ -24,8 +24,11 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
   { tag: ['@native-visibility','@native-startup-restore','@native-activity-log'] }, async ({ extension: e }, info) => {
   assert.equal(info.project.use.headless,false);
   const fixture = await createPressureFixture(); e.startupFixture = fixture;
+  e.stopStartupPressure = () => fixture.close();
   const report = { schemaVersion:1, scenario:'66', token:randomUUID(), thresholds:'measurement only; 15s functional readiness deadline',
     initializationOverlap:'not established by this natural-startup measurement', platform:process.platform, node:process.version };
+  e.startupReport = report;
+  report.stage = 'prepare profile';
   const rule = { id:991, blockURL:'measurement-existing.bd-e2e.test',redirectURL:'',category:'social',isWhitelist:false,
     assignments:[{listId:'general',disabledByUser:false,blockingMode:'always',schedule:null,dailyLimit:null}] };
   try {
@@ -38,7 +41,11 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
       await chrome.storage.session.set({__bdMeasureMarker:token});
     },report.token);
     const tabs=[];
-    for (const url of fixture.urls) tabs.push(await e.newPage(url));
+    for (const url of fixture.urls) {
+      report.stage = `prepare tab ${tabs.length + 1}/12`;
+      tabs.push(await e.newPage(url));
+    }
+    report.stage = 'close prepared browser';
     for (const page of e.context.pages()) if (!tabs.includes(page)) await page.close();
     report.beforePid=(await e.nativeOwner.diagnostics()).pid;
     const executablePath=process.env.BD_CHROMIUM_BINARY || chromium.executablePath();
@@ -49,11 +56,14 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
     const server=createServer(); await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const port=server.address().port; await new Promise(resolve=>server.close(resolve));
     report.launchedAt=Date.now();
+    fixture.startColdLaunch(report.launchedAt);
+    report.stage = 'cold launch';
     e.nativeOwner=await launchNativeChromium({executablePath,profile:e.profile,port,headless:false,
       restoreSession:true,activityLog:true,args:['--host-resolver-rules=MAP blockdistraction.com ~NOTFOUND']});
     report.spawnToCdpMs=Date.now()-report.launchedAt;
     report.afterPid=(await e.nativeOwner.diagnostics()).pid;
     let preparedAt=Date.now(); report.preparation={};
+    report.stage = 'attach restored browser';
     e.nativeBrowser=await chromium.connectOverCDP(e.nativeOwner.webSocketDebuggerUrl,{noDefaults:true,isLocal:true});
     report.preparation.cdpAttachMs=Date.now()-preparedAt; preparedAt=Date.now();
     [e.context]=e.nativeBrowser.contexts(); await e.configureContext();
@@ -63,6 +73,7 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
     report.preparation.pressureWaitMs=Date.now()-preparedAt; preparedAt=Date.now();
     // A minimal packaged page sends no production runtime messages on load.
     // Do not obtain/warm the worker or poll startup readiness before this input.
+    report.stage = 'measure native Popup';
     const host=await e.context.newPage();
     await host.goto(`chrome-extension://${e.id}/blocked.html`);
     await host.evaluate(installStartupMeasurement,{expectedRows:1});
@@ -71,6 +82,7 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
     await expect.poll(()=>host.evaluate(()=>Boolean(window.__bdStartupMeasure.readyMs !== undefined &&
       window.__bdStartupMeasure.firstReplyMs !== undefined && window.__bdStartupMeasure.openResolvedMs !== undefined))).toBe(true);
     report.popup=await host.evaluate(()=>window.__bdStartupMeasure);
+    report.stage = 'native Add and Save';
     report.launchToFirstReplyMs=report.popup.clickedEpoch+report.popup.firstReplyMs-report.launchedAt;
     report.launchToPopupReadyMs=report.popup.readyEpoch-report.launchedAt;
     const view=fn=>host.evaluate(new Function(`const v=chrome.extension.getViews({type:'popup'})[0];return (${fn.toString()})(v);`));
@@ -126,13 +138,19 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
     const log=e.nativeOwner.activity.snapshot(e.id);assert.deepEqual(log.errors,[]);
     report.installEvents=log.events.filter(v=>v.api==='runtime.onInstalled').length;
     report.firstMessageCallbacks=nativeMessageCallbacks(log,{extensionId:e.id,producerUrl:host.url()}).length;
+    // Let batched observations catch up; acceptance still requires actual CPU
+    // chunks inside the original click-to-ready interval, not later work.
+    await expect.poll(()=>new Set(fixture.events.filter(event=>event.origin>=report.launchedAt &&
+      event.chunkEnd>=report.popup.readyEpoch).map(event=>event.id)).size).toBeGreaterThanOrEqual(2);
     report.pressure=fixture.events;
     report.pressurePolicy=fixture.policy; report.pressureProducers=fixture.producers;
     assertStartupMeasurement(report);
+    report.stage = 'complete';
   } finally {
     report.pressure=fixture.events;
     report.pressurePolicy=fixture.policy; report.pressureProducers=fixture.producers;
-    try { await info.attach('cold-startup-popup-measurement',{body:JSON.stringify(report,null,2),contentType:'application/json'}); }
-    finally { await fixture.close(); }
+    await fixture.close();
+    await info.attach('cold-startup-popup-measurement',{body:JSON.stringify(report,null,2),contentType:'application/json'});
+    e.startupReportAttached = true;
   }
 });

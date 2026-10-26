@@ -1,5 +1,11 @@
 # BlockDistraction Chromium E2E
 
+## Lifecycle correction (tests only, 2026-10-26)
+
+[CI evidence and verification](ci-lifecycle-2026-10-26.md) cover idle profile preparation,
+CPU receipt batching, bounded failed-test cleanup, live EWMH readiness and complete
+overdue-alarm observation. Runtime remains 5.4.15; inventory remains **64 = 53 + 10 + 1**.
+
 ## CI readiness correction (tests only, 2026-10-26)
 
 [Trace diagnosis and verification](ci-readiness-2026-10-26.md) cover the guarded Start/Stop transition and the owner-renewed CPU workload. Runtime version remains 5.4.15.

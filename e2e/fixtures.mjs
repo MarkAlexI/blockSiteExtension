@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
 import { frameFixtureHtml } from './frame-fixture.mjs';
+import { cleanupDeadline, closeNativeResources } from './bounded-cleanup.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.resolve(process.env.BD_EXTENSION_PATH || path.join(directory, '..'));
@@ -545,21 +546,39 @@ class ExtensionHarness {
   async closeBrowser() {
     // Stop every launch owner, including setup failures and native restarts.
     // The fixture owns the same isolated profile until final cleanup.
-    try { await this.context?.close(); }
-    finally {
-      try { await this.nativeBrowser?.close(); }
-      finally { await this.nativeOwner?.close(); }
+    this.browserCleanupComplete = false;
+    if (this.nativeOwner) {
+      const failures = await closeNativeResources(this);
+      for (const failure of failures) this.testInfo.annotations.push({ type:'diagnostic',
+        description:`${failure.label}: ${failure.error}; owned browser cleanup completed` });
+    } else {
+      await this.context?.close();
+      await this.nativeBrowser?.close();
     }
+    this.browserCleanupComplete = true;
   }
 
   async close() {
     this.releaseVerification?.();
+    const diagnosticErrors = [];
+    const diagnosticDeadline = Date.now() + 5000;
+    const capture = async (label, action) => {
+      try {
+        const remaining = diagnosticDeadline - Date.now();
+        if (remaining <= 0) throw new Error('Diagnostic capture budget exhausted');
+        await cleanupDeadline(action, label, Math.min(3000, remaining));
+      } catch (error) { diagnosticErrors.push({ label, error: error.stack || String(error) }); }
+    };
+    // This hook also runs when the scenario is suspended at a Playwright call
+    // and its own finally has not run. Stop the local workload before captures.
+    if (this.stopStartupPressure) {
+      await capture('stop startup workload', this.stopStartupPressure);
+    }
+    if (this.startupReport && !this.startupReportAttached) await capture('startup-stage', async () =>
+      this.testInfo.attach('cold-startup-popup-measurement', { body:JSON.stringify({ ...this.startupReport,
+        pressure:this.startupFixture.events, pressureProducers:this.startupFixture.producers },null,2),
+      contentType:'application/json' }));
     if (this.context) {
-      const diagnosticErrors = [];
-      const capture = async (label, action) => {
-        try { await action(); }
-        catch (error) { diagnosticErrors.push({ label, error: error.stack || String(error) }); }
-      };
       try {
         const failed = this.testInfo.status !== this.testInfo.expectedStatus;
         if (this.nativeOwner && (failed || this.nativeOwner.activity)) {
@@ -619,7 +638,11 @@ class ExtensionHarness {
           });
         }
       } finally { await this.closeBrowser(); }
-    } else { await this.closeBrowser(); }
+    } else {
+      if (diagnosticErrors.length) this.testInfo.annotations.push({ type:'diagnostic',
+        description:JSON.stringify(diagnosticErrors) });
+      await this.closeBrowser();
+    }
   }
 }
 
@@ -642,7 +665,10 @@ export const test = base.extend({
       expect(harness.pageErrors, 'Unexpected Options page errors').toEqual([]);
     } finally {
       try { await harness.close(); }
-      finally { await rm(profile, { recursive: true, force: true }); }
+      finally {
+        // Keep an isolated profile for diagnosis if owned-process cleanup fails.
+        if (harness.browserCleanupComplete) await rm(profile, { recursive: true, force: true });
+      }
     }
   }
 });
