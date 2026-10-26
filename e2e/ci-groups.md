@@ -1,5 +1,51 @@
 # Chromium E2E groups
 
+## Dependency setup correction (2026-10-26)
+
+At `3a5132404cdf7ac22ed775f7757f2046df0dba05`,
+[run 40307908607](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/40307908607)
+was cancelled at the existing 20-minute job limit. The core test step passed
+**53/53** scenarios, including the corrected Focus Start/Stop case; its job
+was nevertheless cancelled around artifact upload/cleanup. Overdue passed
+**1/1**. Lifecycle never reached package construction or the test step:
+Playwright/browser preparation took about 11 minutes, followed by over nine
+minutes downloading native desktop dependencies from `azure.archive.ubuntu.com`.
+This run provides no result for the corrected cold-startup/Popup measurement.
+
+The workflow now pins the same Ubuntu 24.04 release used in that run. Before
+either APT install, it replaces the runner's mirror list with the official
+Ubuntu HTTPS archives, retaining mirror failover and package signature checks.
+APT gets two retries and 20-second connection/data timeouts; these are not a
+total download deadline. Linux dependency setup has a separate five-minute
+step limit so a slowly progressing transfer cannot consume the whole job.
+Npm installation and browser download each have two-minute step limits.
+
+Openbox, `x11-utils` and `xdotool` are installed without optional recommended
+packages. Full headed Chromium is still installed from the pinned Playwright
+1.62.1 dependency; its unused separate headless shell is omitted. Xvfb, native
+window management, installation, test assertions, scenario deadlines, serial
+execution, zero retries and the 20-minute job limit remain in place.
+
+Applying the patch and choosing **Re-run jobs** on the old run would still use
+the old workflow. Push the new commit, or start a fresh workflow dispatch on
+the updated branch. All three groups and the final `e2e` check must finish
+successfully before accepting the new Chromium measurement.
+
+Local verification: actionlint 1.7.12 and shell syntax passed; `npm run check`
+passed 2240/2240 tests, extension validation and all 70 palette checks. The
+pinned Playwright installer accepts `--no-shell` and selects full Chromium
+151.0.7922.34 without the separate headless shell. All 64 scenarios enumerate.
+The official HTTPS archives returned signed Noble release metadata verified
+with the Ubuntu archive keyring. A full APT installation could not be exercised
+in the local container because its APT privilege transitions are unavailable.
+This does not establish a successful hosted-runner setup or native E2E result;
+those require the fresh CI run described above. Runtime version stays 5.4.15.
+
+References: the [runner image's APT configuration](https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/scripts/build/configure-apt-sources.sh),
+[Ubuntu mirror transport](https://manpages.ubuntu.com/manpages/noble/man1/apt-transport-mirror.1.html),
+[APT connection/data timeouts](https://manpages.ubuntu.com/manpages/noble/man1/apt-transport-http.1.html)
+and [Playwright browser installation](https://playwright.dev/docs/browsers).
+
 ## Current test addition — 2026-10-26
 
 Version 5.4.15 now enumerates **64 = 53 core + 10 lifecycle + 1 overdue**.

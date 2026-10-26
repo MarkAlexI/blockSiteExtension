@@ -16,7 +16,7 @@ permissions:
 jobs:
   scenarios:
     name: scenarios (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -29,13 +29,30 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - name: Install test dependencies
+        timeout-minutes: 2
         working-directory: e2e
         run: npm ci
-      - name: Install Chromium
+      - name: Install Linux dependencies
+        timeout-minutes: 5
         working-directory: e2e
-        run: npx playwright install --with-deps chromium
-      - name: Install native window manager
-        run: sudo apt-get install -y openbox x11-utils xdotool
+        run: |
+          # The runner's first APT mirror stalled before tests in run 40307908607.
+          # Keep its mirror transport and signature checks, using official HTTPS archives.
+          test -f /etc/apt/apt-mirrors.txt
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' |
+            sudo tee /etc/apt/apt-mirrors.txt
+          sudo tee /etc/apt/apt.conf.d/80blockdistraction-ci <<'APT'
+          Acquire::Retries "2";
+          Acquire::http::Timeout "20";
+          Acquire::https::Timeout "20";
+          APT::Update::Error-Mode "any";
+          APT
+          npx playwright install-deps chromium
+          sudo apt-get install --no-install-recommends -y openbox x11-utils xdotool
+      - name: Install Chromium
+        timeout-minutes: 2
+        working-directory: e2e
+        run: npx playwright install --no-shell chromium
       - name: Build and unpack the CWS package
         run: |
           npm run package:cws
