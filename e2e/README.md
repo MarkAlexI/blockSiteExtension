@@ -1,5 +1,12 @@
 # BlockDistraction Chromium E2E
 
+## Focus sound 5.5.0
+
+Scenario 68 covers native audio for activation-free preview, one trusted Listen
+click and real-alarm completion. Current inventory: **66 = 54 core + 10 lifecycle + 1 overdue + 1 upgrade**.
+See [behavior, verification limits and device acceptance](../docs/focus-sound.md).
+
+
 ## Native version update (tests only, 2026-10-26)
 
 [Scenario 67](version-upgrade.md) updates the actual pinned 5.4.14 runtime to
@@ -31,11 +38,11 @@ blocking/redirect screens, pending/failed close requests, native keyboard retry,
 real DNR navigation and safe fallback. That change covered **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
-Цільова версія: **5.4.15**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.5.0**. Playwright: **1.62.1**, Node.js: **22+**.
 
-CI виконує той самий набір у групах `core` (53), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
+CI виконує той самий набір у групах `core` (54), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
-[CI groups](ci-groups.md). Локальний `npm test` запускає всі 65 сценарії.
+[CI groups](ci-groups.md). Локальний `npm test` запускає всі 66 сценарії.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 

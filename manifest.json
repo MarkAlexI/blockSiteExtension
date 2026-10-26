@@ -6,8 +6,8 @@
   "author": "MarkAlexI",
   "homepage_url": "https://blockdistraction.com",
   "default_locale": "en",
-  "version": "5.4.15",
-  "version_name": "5.4.15",
+  "version": "5.5.0",
+  "version_name": "5.5.0",
   "icons": {
     "16": "images/icon-16.png",
     "32": "images/icon-32.png",
@@ -20,7 +20,8 @@
     "scripting",
     "alarms",
     "contextMenus",
-    "notifications"
+    "notifications",
+    "offscreen"
   ],
   "host_permissions": [
     "*://*/*"

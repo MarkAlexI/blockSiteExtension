@@ -1,5 +1,12 @@
 # Chromium E2E groups
 
+## Focus sound 5.5.0
+
+Scenario 68 joins core. Current inventory: **66 = 54 core + 10 lifecycle +
+1 overdue + 1 upgrade**. Existing deadlines, zero retries and required matrix
+gate remain. [Sound behavior and acceptance](../docs/focus-sound.md).
+
+
 ## Native version update (2026-10-26)
 
 Current inventory: **65 = 53 core + 10 lifecycle + 1 overdue + 1 upgrade**.
