@@ -1,10 +1,18 @@
 # BlockDistraction Chromium E2E
 
+## Native version update (tests only, 2026-10-26)
+
+[Scenario 67](version-upgrade.md) updates the actual pinned 5.4.14 runtime to
+the current package in the same native profile, preserving Focus, Pro, settings
+and spent Daily Limit. Current inventory: **65 = 53 core + 10 lifecycle +
+1 overdue + 1 upgrade**. Prepare the previous package before a complete local run:
+`node e2e/prepare-upgrade-baseline.mjs` from the repository root.
+
 ## Lifecycle correction (tests only, 2026-10-26)
 
 [CI evidence and verification](ci-lifecycle-2026-10-26.md) cover idle profile preparation,
 CPU receipt batching, bounded failed-test cleanup, live EWMH readiness and complete
-overdue-alarm observation. Runtime remains 5.4.15; inventory remains **64 = 53 + 10 + 1**.
+overdue-alarm observation. Runtime remains 5.4.15; that change covered **64 = 53 + 10 + 1**.
 
 ## CI readiness correction (tests only, 2026-10-26)
 
@@ -20,14 +28,14 @@ Runtime version remains 5.4.15.
 
 [Scenario 64 and verification notes](blocking-pages.md) cover localized
 blocking/redirect screens, pending/failed close requests, native keyboard retry,
-real DNR navigation and safe fallback. Current inventory: **64 = 53 core + 10 lifecycle + 1 overdue**.
+real DNR navigation and safe fallback. That change covered **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
 Цільова версія: **5.4.15**. Playwright: **1.62.1**, Node.js: **22+**.
 
-CI виконує той самий набір у групах `core` (53), `lifecycle` (10) та `overdue` (1).
+CI виконує той самий набір у групах `core` (53), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
-[CI groups](ci-groups.md). Локальний `npm test` запускає всі 64 сценарії.
+[CI groups](ci-groups.md). Локальний `npm test` запускає всі 65 сценарії.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 

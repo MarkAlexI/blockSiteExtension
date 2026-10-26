@@ -11,12 +11,13 @@ test('the full E2E list includes every actual spec file exactly once', async () 
 });
 
 test('the CI groups are nonempty, disjoint and cover the full suite', () => {
-  const groups = ['core', 'lifecycle', 'overdue'].map(selectTestFiles);
+  const groups = ['core', 'lifecycle', 'overdue', 'upgrade'].map(selectTestFiles);
   assert.ok(groups.every(group => group.length > 0));
   const combined = groups.flat();
   assert.equal(new Set(combined).size, combined.length);
   assert.deepEqual(combined.sort(), [...testFiles].sort());
   assert.deepEqual(selectTestFiles('overdue'), ['overdue.spec.mjs']);
+  assert.deepEqual(selectTestFiles('upgrade'), ['upgrade.spec.mjs']);
 });
 
 test('long expiry and idle-alarm scenarios keep their native tests in the lifecycle group', () => {

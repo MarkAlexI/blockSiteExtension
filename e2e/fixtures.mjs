@@ -82,8 +82,9 @@ export async function addUi(page, blockURL, { dailyMinutes = null } = {}) {
     mode: dailyMinutes === null ? 'always' : 'daily_limit', minutes: dailyMinutes });
 }
 
-class ExtensionHarness {
-  constructor(profile, testInfo, manifest) {
+export class ExtensionHarness {
+  constructor(profile, testInfo, manifest, source = extensionPath) {
+    this.extensionPath = source;
     this.profile = profile;
     this.testInfo = testInfo;
     this.manifest = manifest;
@@ -113,7 +114,7 @@ class ExtensionHarness {
       // Process TZ reaches pages and the MV3 worker without a Date/API shim.
       env: timezone ? { ...process.env, TZ: timezone } : undefined,
       viewport: { width: 1280, height: 900 },
-      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`,
+      args: [`--disable-extensions-except=${this.extensionPath}`, `--load-extension=${this.extensionPath}`,
         // Restored pages and startup alarms run before Playwright routes exist.
         // This dedicated scenario cannot contact the production license host.
         ...(this.testInfo.tags.includes('@native-startup-restore') ?
@@ -138,7 +139,7 @@ class ExtensionHarness {
         // Options title proves its native translation completed; fetching or
         // replacing translations in the renderer would hide an empty bundle.
         const installTitle = this.installed ? undefined : JSON.parse(await readFile(
-          path.join(extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
+          path.join(this.extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
         this.nativeBrowser = await connectPreparedNativeBrowser(chromium, this.nativeOwner, {
           install: persistentInstall && !this.installed ? async browser => {
             setupStage = 'persistent native installation';
@@ -152,7 +153,7 @@ class ExtensionHarness {
               if (this.nativeInstallMessages.length > 50) this.nativeInstallMessages.shift();
             });
             const { pid } = await this.nativeOwner.diagnostics();
-            this.startupInstallation = await installNativeStartupExtension(browser, extensionPath, this.manifest.version,
+            this.startupInstallation = await installNativeStartupExtension(browser, this.extensionPath, this.manifest.version,
               15000, { browserPid: pid });
             await this.testInfo.attach('native-persistent-install', {
               contentType: 'application/json', body: JSON.stringify(this.startupInstallation)
@@ -239,6 +240,7 @@ class ExtensionHarness {
           frameFixtureHtml(url.href) || '<!doctype html><html><head><title>BD E2E fixture</title></head><body><h1>BD E2E fixture</h1><p>Local synthetic page.</p></body></html>' });
       }
       if (['chrome-extension:', 'about:', 'data:'].includes(url.protocol)) return route.continue();
+      if (this.allowNativeUpgradeManager && url.protocol === 'chrome:') return route.continue();
       // No production requests, purchases or real licenses are involved.
       return route.abort();
     });

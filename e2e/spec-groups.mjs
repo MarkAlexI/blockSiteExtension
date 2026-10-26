@@ -22,7 +22,8 @@ export const testFiles = Object.freeze([
   'pro-feedback.spec.mjs',
   'startup-restore-native.spec.mjs',
   'overdue.spec.mjs',
-  'startup-responsiveness.spec.mjs'
+  'startup-responsiveness.spec.mjs',
+  'upgrade.spec.mjs'
 ]);
 
 const lifecycleFiles = new Set([
@@ -36,8 +37,9 @@ const lifecycleFiles = new Set([
 ]);
 
 export function selectTestFiles(group = 'all') {
-  if (!['all', 'core', 'lifecycle', 'overdue'].includes(group)) throw new Error(`Unknown BD_E2E_GROUP: ${group}`);
+  if (!['all', 'core', 'lifecycle', 'overdue', 'upgrade'].includes(group)) throw new Error(`Unknown BD_E2E_GROUP: ${group}`);
   return testFiles.filter(file => group === 'all' ||
-    (file === 'overdue.spec.mjs' ? group === 'overdue' :
-      group !== 'overdue' && lifecycleFiles.has(file) === (group === 'lifecycle')));
+    (file === 'upgrade.spec.mjs' ? group === 'upgrade' :
+      file === 'overdue.spec.mjs' ? group === 'overdue' :
+      !['overdue','upgrade'].includes(group) && lifecycleFiles.has(file) === (group === 'lifecycle')));
 }

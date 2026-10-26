@@ -1,5 +1,17 @@
 # Chromium E2E groups
 
+## Native version update (2026-10-26)
+
+Current inventory: **65 = 53 core + 10 lifecycle + 1 overdue + 1 upgrade**.
+The new `upgrade` job builds the pinned previous runtime before scenario 67;
+the existing groups retain their contents, serial execution, zero retries and
+20-minute job limits. Required check `e2e` requires all four jobs to succeed.
+See [version-update preparation, evidence and limits](version-upgrade.md).
+The previous 64-scenario base passed in
+[run 40337712471](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/40337712471).
+That result does not establish acceptance of the new upgrade job. All dated
+sections below describe earlier changes and their then-current inventory.
+
 ## Dependency setup correction (2026-10-26)
 
 At `3a5132404cdf7ac22ed775f7757f2046df0dba05`,
@@ -46,7 +58,7 @@ References: the [runner image's APT configuration](https://github.com/actions/ru
 [APT connection/data timeouts](https://manpages.ubuntu.com/manpages/noble/man1/apt-transport-http.1.html)
 and [Playwright browser installation](https://playwright.dev/docs/browsers).
 
-## Current test addition — 2026-10-26
+## Previous test addition — 2026-10-26
 
 Version 5.4.15 now enumerates **64 = 53 core + 10 lifecycle + 1 overdue**.
 The cold-startup/Popup measurement is in lifecycle; the process-pause scenario
