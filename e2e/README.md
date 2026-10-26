@@ -1,10 +1,17 @@
 # BlockDistraction Chromium E2E
 
-Цільова версія: **5.4.14**. Playwright: **1.62.1**, Node.js: **22+**.
+## Blocking screens 5.4.15
 
-CI виконує той самий набір у групах `core` (52 сценарії) та `lifecycle` (9).
+[Scenario 64 and verification notes](blocking-pages.md) cover localized
+blocking/redirect screens, pending/failed close requests, native keyboard retry,
+real DNR navigation and safe fallback. Current inventory: **62 = 53 core + 9 lifecycle**.
+
+
+Цільова версія: **5.4.15**. Playwright: **1.62.1**, Node.js: **22+**.
+
+CI виконує той самий набір у групах `core` (53 сценарії) та `lifecycle` (9).
 Команди, спільний check `e2e` і межі перевірки описані в
-[CI groups](ci-groups.md). Локальний `npm test` запускає всі 61 сценарій.
+[CI groups](ci-groups.md). Локальний `npm test` запускає всі 62 сценарії.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 
