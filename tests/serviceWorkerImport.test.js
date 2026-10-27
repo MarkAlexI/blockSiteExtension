@@ -452,7 +452,7 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     assert.equal(telemetryRequests.length, 1);
     assert.equal(telemetryRequests[0].url, 'https://blockdistraction.com/api/telemetry');
     const telemetryPayload = JSON.parse(telemetryRequests[0].options.body);
-    assert.equal(telemetryPayload.schemaVersion, 2);
+    assert.equal(telemetryPayload.schemaVersion, 3);
     assert.match(telemetryPayload.batches[0].deliveryId, /^[0-9a-f-]{36}$/);
     assert.equal(telemetryPayload.batches[0].counters.rule_deleted, 2);
     assert.equal(telemetryPayload.batches[0].counters.feedback_prompt_shown, 1);
@@ -464,6 +464,22 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     assert.equal(telemetryPayload.batches[0].counters.feedback_private_value, undefined);
     assert.equal('installationId' in telemetryPayload.context, false);
     assert.equal(JSON.stringify(telemetryPayload).includes('private.example'), false);
+
+    // Exercise the real message handler, not just the boundary in isolation.
+    const originalTabRemove = globalThis.chrome.tabs.remove;
+    try {
+      globalThis.chrome.tabs.remove = async () => { throw new Error('synthetic close refusal'); };
+      messageListener({ type: 'close_current_tab' }, { tab: { id: 73 } }, () => {});
+      const deadline = Date.now() + 1000;
+      let failure;
+      do {
+        await new Promise(resolve => setImmediate(resolve));
+        failure = Object.values(localStorage.data.telemetryBuckets || {}).flatMap(bucket => bucket.errors || [])
+          .find(error => error.operation === 'close_current_tab');
+      } while (!failure && Date.now() < deadline);
+      assert.equal(failure?.fingerprint, 'worker:async_handler_failed:close_current_tab:error');
+      assert.equal(JSON.stringify(failure).includes('synthetic close refusal'), false);
+    } finally { globalThis.chrome.tabs.remove = originalTabRemove; }
 
     const disabledConsent = await sendWorkerMessage(messageListener, {
       type: 'telemetry:setConsent',

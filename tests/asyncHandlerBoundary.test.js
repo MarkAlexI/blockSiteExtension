@@ -7,9 +7,12 @@ import {
 
 test('async handler boundary exposes only the approved coarse operations', () => {
   assert.deepEqual(Object.values(ASYNC_HANDLER_OPERATIONS).sort(), [
+    'close_current_tab',
     'daily_limit_alarm',
     'dnr_reload_message',
     'pro_status_transition',
+    'record_block',
+    'record_redirect',
     'startup',
     'tab_created',
     'tab_updated',

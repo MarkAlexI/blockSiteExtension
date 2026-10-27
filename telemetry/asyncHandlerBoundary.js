@@ -1,4 +1,7 @@
 export const ASYNC_HANDLER_OPERATIONS = Object.freeze({
+  CLOSE_CURRENT_TAB: 'close_current_tab',
+  RECORD_BLOCK: 'record_block',
+  RECORD_REDIRECT: 'record_redirect',
   TAB_UPDATED: 'tab_updated',
   TAB_CREATED: 'tab_created',
   STARTUP: 'startup',
