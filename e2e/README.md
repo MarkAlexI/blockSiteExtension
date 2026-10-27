@@ -1,9 +1,22 @@
 # BlockDistraction Chromium E2E
 
+## Focus sound timing 5.5.3
+
+Scenarios 68 and 69 use fresh profiles to compare observed native playback with
+a production preview that installs no Web Audio observer. Chromium navigation,
+readiness and proof reads use the same native CDP channel with userGesture:false;
+activation snapshots preserve the strict no-activation assertion. Firefox records
+resume, native ended and close timing without replacing the original promises.
+The new bounded runtime phase results distinguish resume/playback timeouts.
+
+Current inventory: **67 = 55 core + 10 lifecycle + 1 overdue + 1 upgrade**.
+This local patch has model/syntax verification; new hosted native acceptance is
+required. See [sound timing and evidence](../docs/focus-sound.md#553-cold-audio-and-native-evidence).
+
 ## Focus sound 5.5.0
 
-Scenario 68 covers native audio for activation-free preview, one trusted Listen
-click and real-alarm completion. Current inventory: **66 = 54 core + 10 lifecycle + 1 overdue + 1 upgrade**.
+At 5.5.0, scenario 68 added native audio for activation-free preview, one trusted Listen
+click and real-alarm completion. That release inventory: **66 = 54 core + 10 lifecycle + 1 overdue + 1 upgrade**.
 See [behavior, verification limits and device acceptance](../docs/focus-sound.md).
 
 
@@ -38,11 +51,11 @@ blocking/redirect screens, pending/failed close requests, native keyboard retry,
 real DNR navigation and safe fallback. That change covered **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
-Цільова версія: **5.5.2**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.5.3**. Playwright: **1.62.1**, Node.js: **22+**.
 
-CI виконує той самий набір у групах `core` (54), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
+CI виконує той самий набір у групах `core` (55), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
-[CI groups](ci-groups.md). Локальний `npm test` запускає всі 66 сценарії.
+[CI groups](ci-groups.md). Локальний `npm test` запускає всі 67 сценарії.
 
 ## Startup CDP setup correction (2026-10-23, tests only)
 

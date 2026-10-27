@@ -1,8 +1,14 @@
 # Chromium E2E groups
 
+## Focus sound timing 5.5.3
+
+Scenarios 68/69 belong to core, including an observer-free cold preview in a
+separate native profile. Current inventory: **67 = 55 core + 10 lifecycle +
+1 overdue + 1 upgrade**. Deadlines, zero retries and the required gate remain.
+
 ## Focus sound 5.5.0
 
-Scenario 68 joins core. Current inventory: **66 = 54 core + 10 lifecycle +
+At 5.5.0, scenario 68 joined core. That release inventory: **66 = 54 core + 10 lifecycle +
 1 overdue + 1 upgrade**. Existing deadlines, zero retries and required matrix
 gate remain. [Sound behavior and acceptance](../docs/focus-sound.md).
 
