@@ -1,5 +1,9 @@
 # BlockDistraction Chromium E2E
 
+## Rule help and locales 5.5.4
+
+Scenario 48 also exercises the native Popup help disclosure with Enter/Space and checks that its Settings action leaves Tab order when collapsed. Help starts collapsed on each new Popup. The Settings action uses the same navigation path as the header action.
+
 ## Focus sound timing 5.5.3
 
 Scenarios 68 and 69 use fresh profiles to compare observed native playback with
@@ -51,7 +55,7 @@ blocking/redirect screens, pending/failed close requests, native keyboard retry,
 real DNR navigation and safe fallback. That change covered **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
-Цільова версія: **5.5.3**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.5.4**. Playwright: **1.62.1**, Node.js: **22+**.
 
 CI виконує той самий набір у групах `core` (55), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
