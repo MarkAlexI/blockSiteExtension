@@ -38,7 +38,7 @@ blocking/redirect screens, pending/failed close requests, native keyboard retry,
 real DNR navigation and safe fallback. That change covered **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
-Цільова версія: **5.5.0**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.5.1**. Playwright: **1.62.1**, Node.js: **22+**.
 
 CI виконує той самий набір у групах `core` (54), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
