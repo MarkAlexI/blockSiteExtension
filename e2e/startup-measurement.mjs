@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { assertDnrReadiness } from './dnr-readiness.mjs';
 
 const pressurePolicy = { leaseMs: 20_000, chunkMs: 8, intervalMs: 32, receiptIntervalMs: 250 };
 
@@ -170,6 +171,8 @@ export function assertStartupMeasurement(report) {
   assert.equal(report.installEvents, 0, 'persistent extension is not reinstalled');
   assert.equal(report.firstMessageCallbacks, 1, 'one first native message delivery');
   const m = report.popup;
+  assertDnrReadiness(report.dnr);
+  assert.ok(report.dnr.attempts[0].at <= m.clickedEpoch, 'native DNR probe issued before the first Popup command');
   assert.equal(m.trustedOpen, true);
   assert.equal(m.firstReplies, 1);
   assert.deepEqual(m.firstResponse, { isPro: true });

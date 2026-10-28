@@ -1,5 +1,12 @@
 # BlockDistraction Chromium E2E
 
+## DNR startup measurement (tests only, 2026-10-28)
+
+Scenario 66 now starts an independent main-frame DNR probe before native Popup
+input, without waiting for DNR readiness. It records early requests that reached HTTP, timing upper bounds and
+machine identity separately from first-reply/Popup readiness. The scenario count
+is unchanged: 67 total, including 10 lifecycle. See [scope and evidence](dnr-readiness.md).
+
 ## Rule help and locales 5.5.4
 
 Scenario 48 also exercises the native Popup help disclosure with Enter/Space and checks that its Settings action leaves Tab order when collapsed. Help starts collapsed on each new Popup. The Settings action uses the same navigation path as the header action.

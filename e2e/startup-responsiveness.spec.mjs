@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { test, expect } from './fixtures.mjs';
 import { launchNativeChromium } from './native-launch.mjs';
@@ -11,6 +12,7 @@ import { nativeMessageCallbacks } from './native-activity.mjs';
 import { startNativeWindowManager } from './native-window-manager.mjs';
 import { nativeTabShortcutBackend } from './native-tab-shortcut.mjs';
 import { createPressureFixture, installStartupMeasurement, assertStartupMeasurement } from './startup-measurement.mjs';
+import { createDnrStartupFixture, dnrReadinessReport, assertDnrReadiness, measurementEnvironment } from './dnr-readiness.mjs';
 
 const execute = promisify(execFile);
 let desktop;
@@ -23,17 +25,26 @@ test.afterAll(async () => { await desktop?.close(); });
 test('cold browser startup measures the first reply and genuine Popup readiness under restored-tab CPU pressure',
   { tag: ['@native-visibility','@native-startup-restore','@native-activity-log'] }, async ({ extension: e }, info) => {
   assert.equal(info.project.use.headless,false);
-  const fixture = await createPressureFixture(); e.startupFixture = fixture;
-  e.stopStartupPressure = () => fixture.close();
-  const report = { schemaVersion:1, scenario:'66', token:randomUUID(), thresholds:'measurement only; 15s functional readiness deadline',
-    initializationOverlap:'not established by this natural-startup measurement', platform:process.platform, node:process.version };
+  const fixture = await createPressureFixture();
+  let dnr, dnrMeasurement;
+  const dnrObserver = new AbortController();
+  e.startupFixture = { owns: url => fixture.owns(url) || Boolean(dnr?.owns(url)) };
+  e.stopStartupPressure = async () => { await fixture.close(); await dnr?.close(); };
+  const report = { schemaVersion:2, scenario:'66', token:randomUUID(), thresholds:'measurement only; 15s functional readiness deadline',
+    initializationOverlap:'not established by this natural-startup measurement', platform:process.platform, node:process.version,
+    environment:measurementEnvironment() };
   e.startupReport = report;
   report.stage = 'prepare profile';
-  const rule = { id:991, blockURL:'measurement-existing.bd-e2e.test',redirectURL:'',category:'social',isWhitelist:false,
-    assignments:[{listId:'general',disabledByUser:false,blockingMode:'always',schedule:null,dailyLimit:null}] };
   try {
+    dnr = await createDnrStartupFixture();
+    const reachable = await e.newPage(dnr.urls.reachable);
+    assert.equal(await reachable.evaluate(() => document.documentElement.dataset.dnrFixture), dnr.token,
+      'the ruled host really reaches the same HTTP fixture before rule setup');
+    const rule = { id:991, blockURL:dnr.host,redirectURL:'',category:'social',isWhitelist:false,
+      assignments:[{listId:'general',disabledByUser:false,blockingMode:'always',schedule:null,dailyLimit:null}] };
     await e.seed({rules:[rule]});
     const options = await e.openOptions(); await e.reconcile(options);
+    await e.assertBlocked(dnr.urls.target, 'always');
     const beforeState=await e.state();
     await e.worker.evaluate(async token => {
       globalThis.__bdMeasureMarker=token;
@@ -45,8 +56,10 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
       report.stage = `prepare tab ${tabs.length + 1}/12`;
       tabs.push(await e.newPage(url));
     }
+    const dnrDriver = await e.newPage(dnr.urls.control);
+    await dnrDriver.bringToFront();
     report.stage = 'close prepared browser';
-    for (const page of e.context.pages()) if (!tabs.includes(page)) await page.close();
+    for (const page of e.context.pages()) if (!tabs.includes(page) && page !== dnrDriver) await page.close();
     report.beforePid=(await e.nativeOwner.diagnostics()).pid;
     const executablePath=process.env.BD_CHROMIUM_BINARY || chromium.executablePath();
     await e.saveTrace('before-measurement-trace');
@@ -57,16 +70,43 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
     const port=server.address().port; await new Promise(resolve=>server.close(resolve));
     report.launchedAt=Date.now();
     fixture.startColdLaunch(report.launchedAt);
+    dnr.startColdLaunch(report.launchedAt);
     report.stage = 'cold launch';
     e.nativeOwner=await launchNativeChromium({executablePath,profile:e.profile,port,headless:false,
-      restoreSession:true,activityLog:true,args:['--host-resolver-rules=MAP blockdistraction.com ~NOTFOUND']});
+      restoreSession:true,activityLog:true,args:['--host-resolver-rules=MAP *.bd-e2e.test 127.0.0.1, MAP blockdistraction.com ~NOTFOUND']});
     report.spawnToCdpMs=Date.now()-report.launchedAt;
     report.afterPid=(await e.nativeOwner.diagnostics()).pid;
     let preparedAt=Date.now(); report.preparation={};
     report.stage = 'attach restored browser';
     e.nativeBrowser=await chromium.connectOverCDP(e.nativeOwner.webSocketDebuggerUrl,{noDefaults:true,isLocal:true});
     report.preparation.cdpAttachMs=Date.now()-preparedAt; preparedAt=Date.now();
-    [e.context]=e.nativeBrowser.contexts(); await e.configureContext();
+    [e.context]=e.nativeBrowser.contexts();
+    const observationFloorAt = Date.now();
+    report.stage = 'start independent native DNR observer';
+    const blockedPage = () => e.context.pages().find(page => {
+      const url = new URL(page.url());
+      return url.protocol === 'chrome-extension:' && url.host === e.id && url.pathname === '/blocked.html' &&
+        url.searchParams.get('url') === dnr.host && url.searchParams.get('reason') === 'always';
+    });
+    // Observe independently: Popup input must not wait for DNR to become ready.
+    // Consume rejection immediately and cancel the timer on every failure path.
+    dnrMeasurement = (async () => {
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        dnrObserver.signal.throwIfAborted();
+        const page = blockedPage();
+        if (page) {
+          const document = await page.evaluate(() => ({ url: location.href, documentOrigin: performance.timeOrigin }));
+          report.dnr = dnrReadinessReport(dnr, { ...document, at: Date.now() }, {
+            extensionOrigin: `chrome-extension://${e.id}`, observationFloorAt });
+          assertDnrReadiness(report.dnr);
+          return;
+        }
+        await delay(50, undefined, { signal: dnrObserver.signal });
+      }
+      throw new Error('No native cold-start DNR redirect observed within 15 seconds');
+    })().then(() => ({ error: null }), error => ({ error }));
+    await e.configureContext();
     report.preparation.traceAndRoutesMs=Date.now()-preparedAt; preparedAt=Date.now();
     await expect.poll(()=>new Set(fixture.events.filter(event=>event.origin>=report.launchedAt).map(event=>event.id)).size).toBeGreaterThanOrEqual(2);
     report.pressureReadyMs=Date.now()-report.launchedAt;
@@ -144,12 +184,20 @@ test('cold browser startup measures the first reply and genuine Popup readiness 
       event.chunkEnd>=report.popup.readyEpoch).map(event=>event.id)).size).toBeGreaterThanOrEqual(2);
     report.pressure=fixture.events;
     report.pressurePolicy=fixture.policy; report.pressureProducers=fixture.producers;
+    const dnrResult = await dnrMeasurement;
+    if (dnrResult.error) throw dnrResult.error;
+    report.dnr.observedBeforePopup = report.dnr.observation.at <= report.popup.clickedEpoch;
+    if (report.dnr.earlyAllowedRequests) info.annotations.push({ type: 'dnr-startup-traffic',
+      description: `${report.dnr.earlyAllowedRequests} main-frame requests reached HTTP before the first observed block` });
     assertStartupMeasurement(report);
     report.stage = 'complete';
   } finally {
+    dnrObserver.abort();
+    await dnrMeasurement;
     report.pressure=fixture.events;
     report.pressurePolicy=fixture.policy; report.pressureProducers=fixture.producers;
-    await fixture.close();
+    report.dnrPartial = dnr?.snapshot();
+    await e.stopStartupPressure();
     await info.attach('cold-startup-popup-measurement',{body:JSON.stringify(report,null,2),contentType:'application/json'});
     e.startupReportAttached = true;
   }
