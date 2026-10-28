@@ -6,10 +6,10 @@ import { installNativeStartupExtension, persistentStartupArgs } from '../e2e/nat
 const source = '/owned/test-extension with spaces', id = 'a'.repeat(32), version = '5.3.27';
 const pid = 741, dialog = '123', title = 'Select the extension directory';
 function fixture({ installedVersion = version, installedState = 'ENABLED', installAfterReads = 0,
-  stalledRead = false, missingDialog = false, windowPid = pid, changedFocus = false,
+  stalledRead = false, missingDialog = false, remainsOpen = false, replacementDialog = false, windowPid = pid, changedFocus = false,
   dialogTitle = title, ambiguousDialog = false, xtest = true, acceptError = null, searchError = null } = {}) {
   const calls = [], toggle = { checked: false }, records = [];
-  let reads = 0, dialogOpened = false, typed = null, activeReads = 0;
+  let reads = 0, dialogOpened = false, accepted = false, typed = null, activeReads = 0;
   const sandbox = { chrome: { developerPrivate: { getExtensionsInfo: async () => {
     reads++; calls.push({ method: 'getExtensionsInfo' });
     if (stalledRead) return new Promise(() => {});
@@ -42,16 +42,21 @@ function fixture({ installedVersion = version, installedState = 'ENABLED', insta
       if (searchError) throw searchError;
       assert.deepEqual(args, ['search', '--onlyvisible', '--all', '--pid', String(pid), '--name', '^Select the extension directory\\.?$']);
       if (!dialogOpened || missingDialog) throw Object.assign(new Error('no matching windows'), { code: 1 });
+      if (accepted && !remainsOpen) {
+        if (replacementDialog) return { stdout: '456\n' };
+        throw Object.assign(new Error('dialog closed'), { code: 1 });
+      }
       return { stdout: ambiguousDialog ? '123\n456\n' : dialog + '\n' };
     }
     if (args[0] === 'getwindowpid') return { stdout: String(windowPid) };
     if (args[0] === 'getwindowname') return { stdout: dialogTitle };
     if (args[0] === 'windowactivate') return { stdout: '' };
     if (args[0] === 'getactivewindow') return { stdout: changedFocus && ++activeReads > 1 ? '999' : dialog };
-    if (args[0] === 'type') { typed = args.at(-1); return { stdout: '' }; }
+    if (args[0] === 'type') { assert.equal(args[args.indexOf('--delay') + 1], '12'); typed = args.at(-1); return { stdout: '' }; }
     if (args[0] === 'key') {
       if (args.at(-1) === 'alt+o') {
         if (acceptError) throw acceptError;
+        accepted = true;
         assert.equal(typed, source);
         records.push({ id, version: installedVersion, path: source, location: 'UNPACKED', state: installedState });
       }
@@ -76,13 +81,13 @@ test('persistent setup selects the real owned Load unpacked folder dialog withou
   assert.equal(result.id, id); assert.equal(result.path, source);
   assert.equal(result.version, version); assert.equal(result.location, 'UNPACKED'); assert.equal(result.state, 'ENABLED');
   assert.equal(result.method, 'chrome://extensions native Load unpacked dialog');
-  assert.deepEqual(result.dialog, { window: dialog, title, pid, delivery: 'XTEST' });
+  assert.deepEqual(result.dialog, { window: dialog, title, pid, delivery: 'XTEST', typeDelayMs: 12, closed: true });
   assert.equal(f.toggle.checked, true);
   assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
   assert.equal(f.calls.some(call => call.method === 'newCDPSession'), false);
   assert.deepEqual(inputCalls(f).map(call => call.args), [
     ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a'],
-    ['type', '--clearmodifiers', '--delay', '0', source],
+    ['type', '--clearmodifiers', '--delay', '12', source],
     ['key', '--clearmodifiers', 'alt+o']
   ]);
 });
@@ -119,7 +124,14 @@ test('a failed dialog backend is not treated as an absent window or retried', as
 });
 for (const options of [{ installedVersion: '0.0.1' }, { installedState: 'DISABLED' }]) {
   test('native installation retains strict installed metadata checks ' + JSON.stringify(options), async () => {
-    await assert.rejects(install(fixture(options), 25), /identity did not match/);
+    await assert.rejects(install(fixture(options), 25), error => {
+      assert.match(error.message, /identity did not match/);
+      assert.equal(error.nativeInstallation.stage, 'verify installed identity');
+      assert.equal(error.nativeInstallation.metadata[0].version, options.installedVersion || version);
+      assert.equal(error.nativeInstallation.metadata[0].state, options.installedState || 'ENABLED');
+      assert.equal(error.nativeInstallation.dialog.closed, true);
+      return true;
+    });
   });
 }
 test('native installation waits for metadata after initially empty asynchronous reads without reopening the dialog', async () => {
@@ -128,6 +140,21 @@ test('native installation waits for metadata after initially empty asynchronous 
   assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 3);
   assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
   assert.equal(inputCalls(f).length, 3);
+});
+test('an Open action that leaves the native dialog visible fails before metadata polling and records its stage', async () => {
+  const f = fixture({ remainsOpen: true });
+  await assert.rejects(install(f, 25), error => {
+    assert.match(error.message, /dialog did not close/);
+    assert.equal(error.nativeInstallation.stage, 'wait for directory dialog to close');
+    assert.equal(error.nativeInstallation.dialog.closed, false);
+    return true;
+  });
+  assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 0);
+  assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
+  assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'alt+o').length, 1);
+});
+test('a different native dialog after Open cannot be mistaken for successful closure', async () => {
+  await assert.rejects(install(fixture({ replacementDialog: true })), /identity changed after Open/);
 });
 test('native metadata read cannot outlive the original bounded installation timeout', async () => {
   const f = fixture({ stalledRead: true });

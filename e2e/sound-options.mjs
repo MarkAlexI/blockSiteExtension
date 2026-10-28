@@ -25,6 +25,9 @@ export async function openSoundOptions(e) {
     await captureActivation('options-ready');
     return { page, activation, captureActivation, close: async () => {} };
   }
+  if (!e.nativeOwner || !e.nativeBrowser) {
+    throw new Error('Activation-free sound probes require the owned native Chromium connection without default overrides');
+  }
   const page = await e.context.newPage();
   const session = await e.context.newCDPSession(page);
   const evaluate = async (fn, input = null) => {

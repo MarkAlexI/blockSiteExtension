@@ -179,6 +179,7 @@ export class ExtensionHarness {
             contentType: 'application/json', body: JSON.stringify({
               ...await this.nativeOwner.diagnostics(), setupStage, error: String(error),
               installation: this.startupInstallation ?? null,
+              nativeInstallationFailure: error.nativeInstallation ?? null,
               installMessages: this.nativeInstallMessages ?? [],
               connected: this.nativeBrowser?.isConnected() ?? false
             })

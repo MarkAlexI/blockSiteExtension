@@ -1,5 +1,12 @@
 # BlockDistraction Chromium E2E
 
+## Native sound and installation setup correction (tests only, 2026-10-28)
+
+Sound scenarios 68/69 use the owned native `noDefaults` connection and reject
+ordinary framework contexts while retaining strict no-activation checks. Native
+Load unpacked uses paced input, verifies dialog closure and records installation
+stages/last metadata on failure. See [observed failures and acceptance limits](ci-harness-2026-10-28.md).
+
 ## DNR startup measurement (tests only, 2026-10-28)
 
 Scenario 66 now starts an independent main-frame DNR probe before native Popup

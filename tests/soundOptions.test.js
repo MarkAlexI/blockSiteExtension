@@ -31,7 +31,7 @@ function fixture({ tainted = false, navigationError = '' } = {}) {
     },
     async detach() { detached++; }
   };
-  const e = { id: 'owned', options, result: {}, context: {
+  const e = { id: 'owned', options, result: {}, nativeOwner: {}, nativeBrowser: {}, context: {
     async newPage() { return nativePage; },
     async newCDPSession(page) { assert.equal(page, nativePage); return session; }
   } };
@@ -51,6 +51,15 @@ test('native navigation, readiness and proof reads stay on the gesture-free chan
   await view.page.locator('#previewFocusSound').click();
   assert.ok(f.calls.some(call => call[0] === 'native-click'));
   await view.close(); await view.close(); assert.equal(f.detached(), 1);
+});
+
+test('a framework-created Chromium context cannot claim an activation-free native sound probe', async () => {
+  for (const key of ['nativeOwner', 'nativeBrowser']) {
+    const f = fixture(); delete f.e[key];
+    await assert.rejects(openSoundOptions(f.e), /owned native Chromium connection/);
+    assert.deepEqual(f.calls, [], 'reject before opening or navigating a page');
+    assert.equal(f.detached(), 0);
+  }
 });
 
 test('a native evaluation exception is preserved and its session can still close', async () => {
