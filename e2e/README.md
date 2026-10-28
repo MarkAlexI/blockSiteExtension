@@ -1,5 +1,12 @@
 # BlockDistraction Chromium E2E
 
+## Interrupted mutations and native DNR continuity (tests only, 2026-10-28)
+
+Scenarios 70–72 add two owned-process SIGKILL/recovery checkpoints and real
+HTTP main-frame navigation controls during edit, import and profile activation.
+Inventory: **70 = 55 core + 13 lifecycle + 1 overdue + 1 upgrade**.
+See [scope, controls and remaining acceptance](mutation-recovery.md).
+
 ## Native sound and installation setup correction (tests only, 2026-10-28)
 
 Sound scenarios 68/69 use the owned native `noDefaults` connection and reject

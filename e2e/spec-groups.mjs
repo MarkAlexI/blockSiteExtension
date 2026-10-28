@@ -24,7 +24,8 @@ export const testFiles = Object.freeze([
   'startup-restore-native.spec.mjs',
   'overdue.spec.mjs',
   'startup-responsiveness.spec.mjs',
-  'upgrade.spec.mjs'
+  'upgrade.spec.mjs',
+  'mutation-recovery.spec.mjs'
 ]);
 
 const lifecycleFiles = new Set([
@@ -34,7 +35,8 @@ const lifecycleFiles = new Set([
   'alarm-batch-native.spec.mjs',
   'cold-message-native.spec.mjs',
   'startup-restore-native.spec.mjs',
-  'startup-responsiveness.spec.mjs'
+  'startup-responsiveness.spec.mjs',
+  'mutation-recovery.spec.mjs'
 ]);
 
 export function selectTestFiles(group = 'all') {

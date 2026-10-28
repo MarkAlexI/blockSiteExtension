@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { launchNativeChromium, targetsAt } from './native-launch.mjs';
+import { interruptProfileBrowser } from './native-process-interruption.mjs';
 import { connectPreparedNativeBrowser } from './native-connection.mjs';
 import { installNativeStartupExtension, persistentStartupArgs } from './native-install.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
@@ -515,6 +516,26 @@ export class ExtensionHarness {
         offset: local.getTimezoneOffset(), date: `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`,
         nativeDate: Date.toString().includes('[native code]') && Date.now.toString().includes('[native code]') };
     });
+  }
+
+  async interruptAndRestart() {
+    if (!this.nativeOwner || !this.startupInstallation || !this.installed) {
+      throw new Error('Process interruption requires this fixture\'s permanently installed native profile');
+    }
+    const owner = this.nativeOwner;
+    const before = await owner.diagnostics();
+    await this.saveTrace('before-native-process-interruption');
+    const evidence = await interruptProfileBrowser({ pid: before.pid, profile: this.profile });
+    const exit = await owner.waitForExit();
+    expect(exit.signalCode, 'owned browser was killed rather than closed normally').toBe('SIGKILL');
+    this.interruptionEvidence = { ...evidence, beforePid: before.pid, exit };
+    this.context = this.nativeBrowser = this.nativeOwner = this.worker = null;
+    this.options = []; this.traceStarted = false;
+    await this.launch();
+    const after = await this.nativeOwner.diagnostics();
+    expect(after.pid).not.toBe(before.pid);
+    this.interruptionEvidence.afterPid = after.pid;
+    return this.interruptionEvidence;
   }
 
   async restart({ timezone = this.timezone } = {}) {
