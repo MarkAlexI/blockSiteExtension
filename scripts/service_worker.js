@@ -16,7 +16,7 @@ import { shouldSkipSync } from '../utils/shouldSkipSync.js';
 import { isBlockedURL } from './isBlockedURL.js';
 import { getFocusSessionState } from '../utils/focusSession.js';
 import { isUrlInWhitelist } from '../pro/isUrlInWhitelist.js';
-import { createDnrSynchronizer } from './dnrSynchronizer.js';
+import { createDnrSynchronizer, getDnrSyncFailureCode } from './dnrSynchronizer.js';
 import { createSpaNavigationEnforcer } from './spaNavigationEnforcer.js';
 import { createDnrRuleFactory } from '../rules/dnrRuleFactory.js';
 import { authorizeRedirect } from '../utils/redirectAuthorization.js';
@@ -250,10 +250,7 @@ async function settleRulesIntentPostCommitTasks(type, result) {
 let lastRecordedDnrFailureSignature = null;
 
 function getDnrFailureSignature(result) {
-  const failureCode = result.errorCode === 'dnr_rule_limit_reached' ||
-    result.code === 'dnr_rule_limit_reached'
-    ? 'rule_limit_reached'
-    : 'sync_failed';
+  const failureCode = getDnrSyncFailureCode(result);
   const capacity = result.capacity ? {
     limitType: result.capacity.limitType || null,
     expectedCount: result.capacity.expectedCount ?? null,
@@ -270,9 +267,7 @@ function getDnrFailureSignature(result) {
 }
 
 async function recordDnrSyncResult(result) {
-  const failureCode = result.code === 'dnr_rule_limit_reached'
-    ? 'rule_limit_reached'
-    : 'sync_failed';
+  const failureCode = getDnrSyncFailureCode(result);
   const failureSignature = !result.success
     ? getDnrFailureSignature(result)
     : null;
@@ -307,6 +302,7 @@ async function recordDnrSyncResult(result) {
         error: result.error || null,
         errorCode: result.code || null,
         errorName: result.errorName || null,
+        errorStage: result.errorStage || null,
         capacity: result.capacity || null
       }
     }));
@@ -319,6 +315,7 @@ async function recordDnrSyncResult(result) {
         added: result.added,
         error: result.error || 'Unknown DNR synchronization error',
         errorCode: result.code || null,
+        errorStage: result.errorStage || null,
         capacity: result.capacity || null
       }),
       telemetryStore.recordError({

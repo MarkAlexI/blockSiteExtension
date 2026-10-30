@@ -21,6 +21,13 @@ input, without waiting for DNR readiness. It records early requests that reached
 machine identity separately from first-reply/Popup readiness. The scenario count
 is unchanged: 67 total, including 10 lifecycle. See [scope and evidence](dnr-readiness.md).
 
+## Logger and DNR diagnostics 5.5.5
+
+`npm run check` includes logger storage-failure and stale-read regressions,
+bounded DNR failure-stage fingerprints, recovery, consent and durable deduplication.
+These are controlled Node/API-model checks. Native browser acceptance and
+storage-failure reproduction remain separate device checks.
+
 ## Rule help and locales 5.5.4
 
 Scenario 48 also exercises the native Popup help disclosure with Enter/Space and checks that its Settings action leaves Tab order when collapsed. Help starts collapsed on each new Popup. The Settings action uses the same navigation path as the header action.
@@ -76,7 +83,7 @@ blocking/redirect screens, pending/failed close requests, native keyboard retry,
 real DNR navigation and safe fallback. That change covered **64 = 53 core + 10 lifecycle + 1 overdue**.
 
 
-Цільова версія: **5.5.4**. Playwright: **1.62.1**, Node.js: **22+**.
+Цільова версія: **5.5.5**. Playwright: **1.62.1**, Node.js: **22+**.
 
 CI виконує той самий набір у групах `core` (55), `lifecycle` (10), `overdue` (1) та `upgrade` (1).
 Команди, спільний check `e2e` і межі перевірки описані в
