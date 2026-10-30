@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { interruptedMutationScenarios } from '../e2e/mutation-recovery-scenarios.mjs';
+import { waitForPreseedStartup } from '../e2e/preseed-startup.mjs';
 
 async function method(name = 'interruptAndRestart') {
   const source = await readFile(new URL('../e2e/fixtures.mjs', import.meta.url), 'utf8');
@@ -65,7 +66,7 @@ function baselineFixture({ exitCode = 0, signalCode = null, nextId = 'owned', ne
   const state = { profile: '/tmp/owned-interruption', id: 'owned', installed: true,
     startupInstallation: { id: 'owned' }, worker: {}, options: [{}],
     nativeOwner: { diagnostics: async () => ({ pid: 700 }), async waitForExit() {
-      calls.push('prove-clean-exit'); return { exitCode, signalCode };
+      calls.push('prove-clean-exit'); return { exitCode, signalCode, observedAt: 7000 };
     } },
     nativeBrowser: { async newBrowserCDPSession() { return { async send(command) {
       assert.equal(command, 'Browser.close'); calls.push('Browser.close');
@@ -78,6 +79,10 @@ function baselineFixture({ exitCode = 0, signalCode = null, nextId = 'owned', ne
       assert.equal(this.options.length, 0);
       this.nativeOwner = { diagnostics: async () => ({ pid: nextPid }) };
       this.id = nextId;
+      this.worker = { async evaluate() {
+        calls.push('startup-initialization-fence');
+        return { reason: 'startup', timestamp: 7001, hostAccess: true };
+      } };
     },
     seed() { assert.fail('baseline cannot seed or repair production state'); }
   };
@@ -85,19 +90,32 @@ function baselineFixture({ exitCode = 0, signalCode = null, nextId = 'owned', ne
 }
 
 test('a clean installation baseline proves saved identity before any mutation or SIGKILL', async () => {
-  const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect });
+  const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect, waitForPreseedStartup });
   const { state, calls } = baselineFixture();
   const result = await run.call(state);
-  assert.deepEqual(calls, ['trace', 'Browser.close', 'prove-clean-exit', 'launch-saved-profile']);
+  assert.deepEqual(calls, ['trace', 'Browser.close', 'prove-clean-exit', 'launch-saved-profile', 'startup-initialization-fence']);
   assert.equal(result, state.interruptionBaseline);
   assert.equal(result.extensionId, 'owned');
   assert.equal(result.profile, state.profile);
   assert.equal(result.beforePid, 700); assert.equal(result.afterPid, 701);
+  assert.equal(result.startup.timestamp, 7001);
+});
+
+test('a persistent worker with a failed current startup cannot qualify for mutation seeding', async () => {
+  const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect, waitForPreseedStartup });
+  const { state } = baselineFixture();
+  const launch = state.launch;
+  state.launch = async function () {
+    await launch.call(this);
+    this.worker.evaluate = async () => ({ reason: 'startup', timestamp: 7001, hostAccess: false });
+  };
+  await assert.rejects(run.call(state), /Preseed startup permission check failed/);
+  assert.equal(state.interruptionBaseline, undefined);
 });
 
 for (const exit of [{ exitCode: 1 }, { signalCode: 'SIGTERM' }]) {
   test(`an unclean installation baseline cannot proceed to relaunch or mutation ${JSON.stringify(exit)}`, async () => {
-    const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect });
+    const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect, waitForPreseedStartup });
     const { state, calls } = baselineFixture(exit);
     await assert.rejects(run.call(state));
     assert.equal(calls.includes('launch-saved-profile'), false);
@@ -107,7 +125,7 @@ for (const exit of [{ exitCode: 1 }, { signalCode: 'SIGTERM' }]) {
 
 for (const options of [{ nextId: 'different' }, { nextPid: 700 }]) {
   test(`a mismatched saved installation cannot qualify for interruption ${JSON.stringify(options)}`, async () => {
-    const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect });
+    const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect, waitForPreseedStartup });
     const { state } = baselineFixture(options);
     await assert.rejects(run.call(state));
     assert.equal(state.interruptionBaseline, undefined);

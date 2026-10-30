@@ -41,7 +41,10 @@ export const focusSoundScenarios = [{
       assert.equal(before.enabled, false);
       assert.equal(prepared.sticky, false, activationEvidence(evidence));
       assert.equal(before.activated, false, activationEvidence(evidence));
+      evidence.firstPreviewStartedAt = Date.now();
       evidence.firstPreview = await options.evaluate(requestSoundPreview);
+      evidence.firstPreviewElapsedMs = Date.now() - evidence.firstPreviewStartedAt;
+      evidence.afterFirstPreview = await options.evaluate(readSoundObservation);
       assert.equal(evidence.firstPreview.success, true, JSON.stringify(evidence.firstPreview));
       await observed(1);
 

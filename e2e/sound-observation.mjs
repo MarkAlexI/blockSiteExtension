@@ -98,5 +98,6 @@ export async function readSoundObservation() {
   const state = window.__bdSoundObservation;
   return { backend: state.backend, errors: state.errors,
     contexts: state.contexts.map(({ timer: _timer, ...record }) => record),
+    samples: state.samples.map(sample => ({ ...sample })),
     offscreenOpen: state.samples.at(-1)?.open ?? null };
 }

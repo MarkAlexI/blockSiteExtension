@@ -45,6 +45,23 @@ with the same extension ID before the fault is prepared. The selected production
 with SIGKILL as before. There is no reinstall, reseed or graceful close at the
 mutation interruption point. The baseline is attached to mutation evidence.
 
+The follow-up to [run 41068342493](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/41068342493)
+also waits for this process's production startup permission checkpoint, committed
+after initialization and usage pruning, before synthetic mutation data can be
+seeded. A persisted migration flag and a live worker alone are insufficient.
+This read-only fence applies only to preparation before seeding; SIGKILL recovery
+and its original assertions remain unchanged.
+
+That run passed cold preview 69 without content activation and remapped-write
+SIGKILL recovery 71, but still failed 68 at `audio_playback_timeout`, 70 before
+interruption with erased fixture budgets, and 52/35 with empty native i18n
+bindings. The latter two now assert the real bundle explicitly and attach the
+checkpoint; no dictionary, locale or UI result is substituted. Failure evidence
+also compares worker i18n and records passive PulseAudio output queries for
+sound, preview timing and the existing offscreen observation timeline.
+These additions do not establish a fix for native i18n or audio playback.
+The next native CI must verify the preseed fence and all original scenarios.
+
 ## Rule help and locales 5.5.4
 
 Scenario 48 also exercises the native Popup help disclosure with Enter/Space and checks that its Settings action leaves Tab order when collapsed. Help starts collapsed on each new Popup. The Settings action uses the same navigation path as the header action.

@@ -12,6 +12,9 @@ import { observeColdWorker, evaluateColdProducer } from './native-cold-message.m
 import { triggerColdMessages } from './cold-message.mjs';
 import { nativeStorageWrite, nativeWakeAlarms } from './native-activity.mjs';
 import { extensionWorker } from './extension-worker.mjs';
+import { waitForPreseedStartup } from './preseed-startup.mjs';
+import { readNativeI18n } from './native-i18n.mjs';
+import { readNativeAudioOutput } from './native-audio-output.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
@@ -544,8 +547,9 @@ export class ExtensionHarness {
     const after = await this.nativeOwner.diagnostics();
     expect(after.pid).not.toBe(before.pid);
     expect(this.id, 'same persistent extension after a clean installation baseline').toBe(extensionId);
+    const startup = await waitForPreseedStartup(this.worker, exit.observedAt);
     this.interruptionBaseline = { method: 'clean Browser.close before mutation seeding',
-      extensionId, profile: this.profile, beforePid: before.pid, afterPid: after.pid, exit };
+      extensionId, profile: this.profile, beforePid: before.pid, afterPid: after.pid, exit, startup };
     return this.interruptionBaseline;
   }
 
@@ -647,6 +651,14 @@ export class ExtensionHarness {
           }));
         }
         if (failed) {
+          if (this.worker) await capture('native-i18n-worker', async () => this.testInfo.attach('native-i18n-worker', {
+            body: JSON.stringify(await this.worker.evaluate(readNativeI18n), null, 2), contentType: 'application/json'
+          }));
+          if (this.testInfo.tags.includes('@native-no-activation')) {
+            await capture('native-audio-output', async () => this.testInfo.attach('native-audio-output', {
+              body: JSON.stringify(await readNativeAudioOutput(), null, 2), contentType: 'application/json'
+            }));
+          }
           await capture('native-i18n-final', async () => {
             const pages = [];
             for (const page of this.context.pages()) {

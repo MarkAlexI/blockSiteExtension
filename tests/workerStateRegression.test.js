@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { createExtensionApi, withExtensionEnvironment } from './helpers/extensionTestHarness.js';
 import { DAILY_LIMIT_SESSION_KEY, getLocalDateKey } from '../rules/dailyLimitManager.js';
 import { COLD_SCHEDULE, coldRequests, assertColdReplies, assertColdState } from '../e2e/cold-message.mjs';
+import { waitForPreseedStartup } from '../e2e/preseed-startup.mjs';
 
 const TEST_FIREFOX_ANDROID = false;
 let workerImportId = 0;
@@ -1123,7 +1124,7 @@ test('a delayed visibility probe cannot restore the old usage key after an assig
 });
 
 
-for (const barrier of ['migration-marker', 'startup-marker', 'install-page']) {
+for (const barrier of ['migration-marker', 'startup-marker', 'install-page', 'startup-checkpoint']) {
   test(`E2E fixture seed at ${barrier} distinguishes early initialization from completed install`, { timeout: 5000 }, async () => {
     await withWorker(async ({ api, send, startup }) => {
       const ready = createDeferred();
@@ -1144,27 +1145,38 @@ for (const barrier of ['migration-marker', 'startup-marker', 'install-page']) {
       };
       const seeded = { rules: [makeDailyLimitRule(21, 'general')], activeRuleListId: 'general',
         dailyRuleUsage: { version: 2, date: getLocalDateKey(), usageSeconds: { '21:general': 840 }, lastSample: null } };
-      const initializing = barrier === 'startup-marker' ? startup() :
+      const startupBarrier = barrier === 'startup-marker' || barrier === 'startup-checkpoint';
+      const completedPreparation = barrier === 'install-page' || barrier === 'startup-checkpoint';
+      const startedAt = Date.now();
+      let startupFence, fencePassed = false;
+      const initializing = startupBarrier ? startup() :
         api.runtime.onInstalled.listeners[0]({ reason: 'install' });
       try {
         await ready.promise;
         assert.equal(api.storage.local.data.is_migrated_to_local, true);
         assert.equal(api.createdTabs.length, 0, 'install page is not created during migration');
-        if (barrier !== 'install-page') await api.storage.local.set(seeded);
+        if (barrier === 'startup-checkpoint') {
+          startupFence = waitForPreseedStartup({ evaluate: fn => fn() }, startedAt, { pause: tick })
+            .then(value => { fencePassed = true; return value; });
+          await tick();
+          assert.equal(fencePassed, false, 'the production checkpoint cannot pass while startup still holds its old rules');
+        }
+        if (!completedPreparation) await api.storage.local.set(seeded);
       } finally {
         release.resolve();
         await initializing;
         api.storage.local.get = originalGet;
       }
       assert.equal(api.createdTabs.some(tab => tab.url === api.runtime.getURL('options/options.html')),
-        barrier !== 'startup-marker', 'only install creates a post-initialization Options barrier');
-      if (barrier === 'install-page') await api.storage.local.set(seeded);
+        !startupBarrier, 'only install creates a post-initialization Options barrier');
+      if (startupFence) assert.equal((await startupFence).reason, 'startup');
+      if (completedPreparation) await api.storage.local.set(seeded);
       const response = await send({ type: 'rules:activateList', payload: { listId: 'general' } });
       assert.equal(response.success, true, JSON.stringify(response));
       assert.deepEqual(api.storage.local.data.dailyRuleUsage.usageSeconds,
-        barrier === 'install-page' ? { '21:general': 840 } : {},
-        'only the completed-install barrier preserves the seeded exhausted budget');
-      assert.deepEqual(api.dynamicRules.map(rule => rule.id), barrier === 'install-page' ? [21] : []);
+        completedPreparation ? { '21:general': 840 } : {},
+        'only completed initialization permits a safe fixture seed');
+      assert.deepEqual(api.dynamicRules.map(rule => rule.id), completedPreparation ? [21] : []);
     }, { local: { activeRuleListId: 'general', is_migrated_to_local: true } });
   });
 }

@@ -1,5 +1,6 @@
 import { blockingPageScenarios } from './blocking-page-scenarios.mjs';
 import assert from 'node:assert/strict';
+import { requireNativeI18n } from './native-i18n.mjs';
 import { statisticsScenarios } from './statistics-scenarios.mjs';
 import { importScenarios } from './import-scenarios.mjs';
 import { bulkSettingsScenarios } from './bulk-settings-scenarios.mjs';
@@ -126,6 +127,7 @@ export const accessibilityScenarios = [{
       assignments: [{ listId: 'general', disabledByUser: false, blockingMode: 'always', schedule: null, dailyLimit: null }] };
     await e.seed({ pro: true, rules: [rule] });
     const page = await e.openOptions();
+    await requireNativeI18n(e, page, 'rule-toggle-native-i18n');
     const toggle = '#rules-container tr[data-rule-id="52"][data-assignment-list-id="general"] .rule-toggle';
     const names = await page.evaluate(() => {
       const api = typeof browser === 'undefined' ? chrome : browser;

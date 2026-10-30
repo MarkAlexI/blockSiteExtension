@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { assertNativeClock, recordCalendarEvidence } from './calendar-scenarios.mjs';
+import { requireNativeI18n } from './native-i18n.mjs';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const markerKey = '__bdDayBoundaryProfile';
@@ -75,8 +76,12 @@ async function readers(e, first, usage, exhausted = []) {
         exhausted: Boolean(status?.classList.contains('limit-reached')) };
     }).sort((a, b) => a.id - b.id)), value => JSON.stringify(value) === JSON.stringify(expected),
     'Options/Popup agree with recovered assignment budgets');
-  for (const page of pages) await checkRows(page);
+  for (const [index, page] of pages.entries()) {
+    await requireNativeI18n(e, page, `day-reader-${index + 1}-native-i18n`);
+    await checkRows(page);
+  }
   await pages[2].goto(e.popupUrl);
+  await requireNativeI18n(e, pages[2], 'day-popup-reopened-native-i18n');
   await checkRows(pages[2]);
   await front(first);
   return pages;
