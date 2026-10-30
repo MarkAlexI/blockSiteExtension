@@ -58,6 +58,11 @@ async function interruptedMutation(e, phase) {
   const report = { schemaVersion: 1, phase, token, stage: 'prepare genuine shared-rule edit', scope: 'Linux owned browser SIGKILL after a native write; not power-loss durability or automatic idle unload' };
   let installed = false;
   try {
+    if (e.prepareInterruptionBaseline) {
+      report.stage = 'verify persistent installation before mutation seeding';
+      report.installationBaseline = await e.prepareInterruptionBaseline();
+    }
+    report.stage = 'prepare genuine shared-rule edit';
     await e.seed({ rules: [rule(21, 'usage.bd-e2e.test', ['general', 'list-1'], true),
       rule(24, 'unrelated-mutation.bd-e2e.test', ['general'], true)], active: 'list-1',
       usage: { '21:general': 100, '21:list-1': 840, '24:general': 77 } });

@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { interruptedMutationScenarios } from '../e2e/mutation-recovery-scenarios.mjs';
 
-async function method() {
+async function method(name = 'interruptAndRestart') {
   const source = await readFile(new URL('../e2e/fixtures.mjs', import.meta.url), 'utf8');
-  const body = source.match(/  async interruptAndRestart\(\) \{([\s\S]*?)\n  \}\n/);
-  assert.ok(body, 'actual harness interruption method');
+  const body = source.match(new RegExp(`  async ${name}\\(\\) \\{([\\s\\S]*?)\\n  \\}\\n`));
+  assert.ok(body, `actual harness ${name} method`);
   return body[1];
 }
 const expect = actual => ({ toBe: expected => assert.equal(actual, expected),
@@ -29,6 +30,7 @@ test('the actual harness kills its owned process, retains failure evidence and r
         calls.push('prove-signal-exit'); return { signalCode: 'SIGKILL' };
       } };
       state = { profile: '/tmp/owned-interruption', nativeOwner: owner, installed: true, startupInstallation: {},
+        id: 'owned', interruptionBaseline: { extensionId: 'owned', profile: '/tmp/owned-interruption' },
         saveTrace: async () => { calls.push('trace'); },
         async launch() { calls.push('launch'); assert.equal(this.worker, null); assert.equal(this.options.length, 0);
           this.nativeOwner = { diagnostics: async () => ({ pid: 701 }) }; }, seed() { assert.fail('never reseed'); } };
@@ -57,3 +59,82 @@ test('the actual harness refuses an unowned or nonpersistent browser before sign
   await assert.rejects(run.call({ config: { installation: 'temporary' } }));
   assert.equal(killed, false);
 });
+
+function baselineFixture({ exitCode = 0, signalCode = null, nextId = 'owned', nextPid = 701 } = {}) {
+  const calls = [];
+  const state = { profile: '/tmp/owned-interruption', id: 'owned', installed: true,
+    startupInstallation: { id: 'owned' }, worker: {}, options: [{}],
+    nativeOwner: { diagnostics: async () => ({ pid: 700 }), async waitForExit() {
+      calls.push('prove-clean-exit'); return { exitCode, signalCode };
+    } },
+    nativeBrowser: { async newBrowserCDPSession() { return { async send(command) {
+      assert.equal(command, 'Browser.close'); calls.push('Browser.close');
+    } }; } },
+    async saveTrace() { calls.push('trace'); },
+    async launch() {
+      calls.push('launch-saved-profile');
+      assert.equal(this.installed, true, 'the installer must not run again');
+      assert.equal(this.worker, null);
+      assert.equal(this.options.length, 0);
+      this.nativeOwner = { diagnostics: async () => ({ pid: nextPid }) };
+      this.id = nextId;
+    },
+    seed() { assert.fail('baseline cannot seed or repair production state'); }
+  };
+  return { state, calls };
+}
+
+test('a clean installation baseline proves saved identity before any mutation or SIGKILL', async () => {
+  const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect });
+  const { state, calls } = baselineFixture();
+  const result = await run.call(state);
+  assert.deepEqual(calls, ['trace', 'Browser.close', 'prove-clean-exit', 'launch-saved-profile']);
+  assert.equal(result, state.interruptionBaseline);
+  assert.equal(result.extensionId, 'owned');
+  assert.equal(result.profile, state.profile);
+  assert.equal(result.beforePid, 700); assert.equal(result.afterPid, 701);
+});
+
+for (const exit of [{ exitCode: 1 }, { signalCode: 'SIGTERM' }]) {
+  test(`an unclean installation baseline cannot proceed to relaunch or mutation ${JSON.stringify(exit)}`, async () => {
+    const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect });
+    const { state, calls } = baselineFixture(exit);
+    await assert.rejects(run.call(state));
+    assert.equal(calls.includes('launch-saved-profile'), false);
+    assert.equal(state.interruptionBaseline, undefined);
+  });
+}
+
+for (const options of [{ nextId: 'different' }, { nextPid: 700 }]) {
+  test(`a mismatched saved installation cannot qualify for interruption ${JSON.stringify(options)}`, async () => {
+    const run = vm.runInNewContext(`(async function() {${await method('prepareInterruptionBaseline')}\n})`, { expect });
+    const { state } = baselineFixture(options);
+    await assert.rejects(run.call(state));
+    assert.equal(state.interruptionBaseline, undefined);
+  });
+}
+
+test('interruption requires the baseline of the same profile and extension before signaling', async () => {
+  let killed = false;
+  const run = vm.runInNewContext(`(async function() {${await method()}\n})`, {
+    interruptProfileBrowser: async () => { killed = true; }, expect
+  });
+  for (const interruptionBaseline of [undefined, { extensionId: 'other', profile: '/tmp/owned' },
+    { extensionId: 'owned', profile: '/tmp/other' }]) {
+    await assert.rejects(run.call({ id: 'owned', profile: '/tmp/owned', installed: true,
+      startupInstallation: {}, nativeOwner: {}, interruptionBaseline }), /verified clean installation baseline/);
+  }
+  assert.equal(killed, false);
+});
+
+for (const scenario of interruptedMutationScenarios) {
+  test(`scenario ${scenario.id} rejects a failed installation baseline before seeding`, async () => {
+    const calls = [];
+    const e = { result: {}, async prepareInterruptionBaseline() {
+      calls.push('baseline'); throw new Error('baseline refused');
+    }, seed() { assert.fail('no mutation fixture before verified installation'); } };
+    await assert.rejects(scenario.run(e), /baseline refused/);
+    assert.deepEqual(calls, ['baseline']);
+    assert.equal(e.result.mutationEvidence.at(-1).value.stage, 'verify persistent installation before mutation seeding');
+  });
+}

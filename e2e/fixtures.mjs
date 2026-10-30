@@ -219,7 +219,12 @@ export class ExtensionHarness {
   }
 
   async configureContext() {
-    await this.context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    // DOM snapshot setup evaluates scripts in renderers. The cold audio probes
+    // must observe activation without that framework observer; retain images,
+    // sources and the CDP activation evidence for their trace.
+    this.traceOptions = { screenshots: true,
+      snapshots: !this.testInfo.tags.includes('@native-no-activation'), sources: true };
+    await this.context.tracing.start(this.traceOptions);
     this.traceStarted = true;
     await this.context.route('**/*', async route => {
       const request = route.request();
@@ -518,9 +523,39 @@ export class ExtensionHarness {
     });
   }
 
+  async prepareInterruptionBaseline() {
+    if (!this.nativeOwner || !this.startupInstallation || !this.installed) {
+      throw new Error('Interruption baseline requires a permanently installed owned native profile');
+    }
+    const extensionId = this.id;
+    const owner = this.nativeOwner;
+    const before = await owner.diagnostics();
+    await this.saveTrace('before-interruption-installation-baseline');
+    const command = await this.nativeBrowser.newBrowserCDPSession();
+    await command.send('Browser.close');
+    const exit = await owner.waitForExit();
+    expect(exit.exitCode, 'installation baseline exits cleanly before mutation seeding').toBe(0);
+    expect(exit.signalCode, 'installation baseline is not SIGTERM or SIGKILL').toBe(null);
+    this.context = this.nativeBrowser = this.nativeOwner = this.worker = null;
+    this.options = []; this.traceStarted = false;
+    // The installed flag stays true: launch must discover the saved native
+    // installation without reinstalling, seeding, or repairing extension state.
+    await this.launch();
+    const after = await this.nativeOwner.diagnostics();
+    expect(after.pid).not.toBe(before.pid);
+    expect(this.id, 'same persistent extension after a clean installation baseline').toBe(extensionId);
+    this.interruptionBaseline = { method: 'clean Browser.close before mutation seeding',
+      extensionId, profile: this.profile, beforePid: before.pid, afterPid: after.pid, exit };
+    return this.interruptionBaseline;
+  }
+
   async interruptAndRestart() {
     if (!this.nativeOwner || !this.startupInstallation || !this.installed) {
       throw new Error('Process interruption requires this fixture\'s permanently installed native profile');
+    }
+    if (!this.interruptionBaseline || this.interruptionBaseline.extensionId !== this.id ||
+        this.interruptionBaseline.profile !== this.profile) {
+      throw new Error('Process interruption requires a verified clean installation baseline');
     }
     const owner = this.nativeOwner;
     const before = await owner.diagnostics();

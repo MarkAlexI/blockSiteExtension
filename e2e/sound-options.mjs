@@ -1,4 +1,4 @@
-// Keep navigation and evaluation on the same gesture-free CDP channel.
+// Keep automatic navigation and evaluation on the same gesture-free channel.
 // Playwright page.evaluate supplies userGesture:true. The activation trace
 // records each real document state; it never clears or replaces that state.
 export async function requestSoundPreview() {
@@ -47,7 +47,9 @@ export async function openSoundOptions(e) {
     await captureActivation('before-navigation');
     const url = `chrome-extension://${e.id}/options/options.html`;
     await session.send('Page.enable');
-    const navigation = await session.send('Page.navigate', { url });
+    // CDP defaults to a typed navigation. This fixture opens the document
+    // automatically; the native activation assertions below remain decisive.
+    const navigation = await session.send('Page.navigate', { url, transitionType: 'auto_toplevel' });
     if (navigation.errorText) throw new Error(`Sound Options navigation: ${navigation.errorText}`);
     const deadline = Date.now() + 15000;
     for (;;) {

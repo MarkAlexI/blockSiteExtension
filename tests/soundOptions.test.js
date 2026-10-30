@@ -21,7 +21,9 @@ function fixture({ tainted = false, navigationError = '' } = {}) {
       calls.push([command, params]);
       if (command === 'Page.enable') return {};
       if (command === 'Page.navigate') {
-        world.location.href = params.url; world.navigator.userActivation.hasBeenActive = tainted;
+        world.location.href = params.url;
+        world.navigator.userActivation.hasBeenActive = tainted;
+        world.navigator.userActivation.isActive = tainted;
         return { errorText: navigationError || undefined };
       }
       assert.equal(command, 'Runtime.evaluate');
@@ -42,7 +44,7 @@ function fixture({ tainted = false, navigationError = '' } = {}) {
 test('native navigation, readiness and proof reads stay on the gesture-free channel', async () => {
   const f = fixture(), view = await openSoundOptions(f.e);
   assert.ok(f.calls.some(([command, params]) => command === 'Page.navigate' &&
-    params.url === 'chrome-extension://owned/options/options.html'));
+    params.url === 'chrome-extension://owned/options/options.html' && params.transitionType === 'auto_toplevel'));
   assert.deepEqual(f.options, [f.nativePage]);
   assert.deepEqual(view.activation.map(item => [item.stage, item.sticky]),
     [['before-navigation', false], ['after-navigation', false]]);

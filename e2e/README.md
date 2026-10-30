@@ -28,6 +28,23 @@ bounded DNR failure-stage fingerprints, recovery, consent and durable deduplicat
 These are controlled Node/API-model checks. Native browser acceptance and
 storage-failure reproduction remain separate device checks.
 
+## Native fixture preconditions (2026-10-30)
+
+Sound scenarios 68/69 declare automatic `auto_toplevel` navigation rather than
+CDP's default typed navigation. Readiness, activation reads and the first preview
+stay on the `userGesture: false` channel. Real sticky activation still fails the
+scenario; it is never cleared, emulated or ignored.
+Only these two tests use `@native-no-activation` to omit DOM snapshot injection.
+Screenshots, sources and the explicit activation timeline remain in evidence;
+other test groups keep their normal DOM snapshots. Native CI must confirm the
+observer-isolation change; the Node checks establish configuration and guards.
+
+Before mutation scenarios 70/71 seed any data, their owned persistent installation
+must survive one clean `Browser.close` (exit code 0, no signal) and a new process
+with the same extension ID before the fault is prepared. The selected production write is then held and interrupted
+with SIGKILL as before. There is no reinstall, reseed or graceful close at the
+mutation interruption point. The baseline is attached to mutation evidence.
+
 ## Rule help and locales 5.5.4
 
 Scenario 48 also exercises the native Popup help disclosure with Enter/Space and checks that its Settings action leaves Tab order when collapsed. Help starts collapsed on each new Popup. The Settings action uses the same navigation path as the header action.

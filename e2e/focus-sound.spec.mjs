@@ -10,5 +10,5 @@ test.beforeAll(async ({}, info) => {
 });
 test.afterAll(async () => { await desktop?.close(); });
 for (const scenario of focusSoundScenarios) {
-  test(scenario.title, { tag: ['@native-visibility'] }, async ({ extension }) => scenario.run(extension));
+  test(scenario.title, { tag: ['@native-visibility', '@native-no-activation'] }, async ({ extension }) => scenario.run(extension));
 }

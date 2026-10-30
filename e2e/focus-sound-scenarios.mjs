@@ -9,6 +9,9 @@ const until = async (read, check, label) => {
   throw new Error(`${label}: ${JSON.stringify(value)}`);
 };
 const click = (page, selector) => page.locator ? page.locator(selector).click() : page.click(selector);
+const activationEvidence = evidence => JSON.stringify({
+  activation: evidence.activation, tracing: evidence.tracing
+});
 
 export const focusSoundScenarios = [{
   id: '68', title: 'Focus sound uses native audio for preview and completion and releases playback resources',
@@ -16,7 +19,7 @@ export const focusSoundScenarios = [{
     const soundView = await openSoundOptions(e);
     const options = soundView.page;
     const evidence = { scope: 'native extension audio execution; not physical speaker or Android acceptance',
-      activation: soundView.activation };
+      activation: soundView.activation, tracing: e.traceOptions ?? null };
     let observing = false;
     const observed = async count => until(() => options.evaluate(readSoundObservation), state =>
       state.contexts.length === count && (state.backend.startsWith('Firefox') ?
@@ -24,7 +27,7 @@ export const focusSoundScenarios = [{
     `${count} completed native sound contexts`);
     try {
       const initial = await soundView.captureActivation('before-observation');
-      assert.equal(initial.sticky, false, JSON.stringify(evidence.activation));
+      assert.equal(initial.sticky, false, activationEvidence(evidence));
       Object.assign(evidence, await options.evaluate(installSoundObservation));
       observing = true;
       await soundView.captureActivation('after-observation');
@@ -36,8 +39,8 @@ export const focusSoundScenarios = [{
       });
       const prepared = await soundView.captureActivation('after-read-only-fixture');
       assert.equal(before.enabled, false);
-      assert.equal(prepared.sticky, false, JSON.stringify(evidence.activation));
-      assert.equal(before.activated, false, JSON.stringify(evidence.activation));
+      assert.equal(prepared.sticky, false, activationEvidence(evidence));
+      assert.equal(before.activated, false, activationEvidence(evidence));
       evidence.firstPreview = await options.evaluate(requestSoundPreview);
       assert.equal(evidence.firstPreview.success, true, JSON.stringify(evidence.firstPreview));
       await observed(1);
@@ -94,11 +97,11 @@ export const focusSoundScenarios = [{
   async run(e) {
     const soundView = await openSoundOptions(e);
     const evidence = { scope: 'fresh-profile production preview without prototype observation',
-      activation: soundView.activation };
+      activation: soundView.activation, tracing: e.traceOptions ?? null };
     try {
       const options = soundView.page;
       const initial = await soundView.captureActivation('before-preview');
-      assert.equal(initial.sticky, false, JSON.stringify(evidence.activation));
+      assert.equal(initial.sticky, false, activationEvidence(evidence));
       const before = await options.evaluate(async () => {
         const api = globalThis.browser || chrome;
         return { focus: (await api.storage.local.get('focusSession')).focusSession,
@@ -106,7 +109,7 @@ export const focusSoundScenarios = [{
       });
       assert.equal(before.enabled, false);
       const ready = await soundView.captureActivation('after-read-only-fixture');
-      assert.equal(ready.sticky, false, JSON.stringify(evidence.activation));
+      assert.equal(ready.sticky, false, activationEvidence(evidence));
       const started = Date.now();
       evidence.preview = await options.evaluate(requestSoundPreview);
       evidence.elapsedMs = Date.now() - started;
