@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { openSoundOptions, requestSoundPreview } from './sound-options.mjs';
 import { installSoundObservation, readSoundObservation } from './sound-observation.mjs';
+import { observeNativeAudioClock } from './native-audio-clock.mjs';
+import { readNativeAudioOutput } from './native-audio-output.mjs';
 
 const until = async (read, check, label) => {
   const deadline = Date.now() + 15000;
@@ -21,6 +23,7 @@ export const focusSoundScenarios = [{
     const evidence = { scope: 'native extension audio execution; not physical speaker or Android acceptance',
       activation: soundView.activation, tracing: e.traceOptions ?? null };
     let observing = false;
+    let nativeClock;
     const observed = async count => until(() => options.evaluate(readSoundObservation), state =>
       state.contexts.length === count && (state.backend.startsWith('Firefox') ?
         state.contexts.every(context => context.closed && context.gains === 2 && context.ended === 2 && context.peak > 0.001) : state.offscreenOpen === 0),
@@ -28,6 +31,18 @@ export const focusSoundScenarios = [{
     try {
       const initial = await soundView.captureActivation('before-observation');
       assert.equal(initial.sticky, false, activationEvidence(evidence));
+      if (e.nativeBrowser && e.nativeOwner) {
+        evidence.inFlightAudioOutput = [];
+        nativeClock = await observeNativeAudioClock({ browser: e.nativeBrowser, endpoint: e.nativeOwner.endpoint,
+          offscreenUrl: `chrome-extension://${e.id}/scripts/sound-offscreen.html` }, {
+          onPlaying: async checkpoint => {
+            const capture = { ...checkpoint, startedAt: Date.now() };
+            evidence.inFlightAudioOutput.push(capture);
+            capture.output = await readNativeAudioOutput({ detailed: true });
+            capture.completedAt = Date.now();
+          }
+        });
+      }
       Object.assign(evidence, await options.evaluate(installSoundObservation));
       observing = true;
       await soundView.captureActivation('after-observation');
@@ -84,15 +99,19 @@ export const focusSoundScenarios = [{
       evidence.completed = await observed(3);
       assert.deepEqual(evidence.completed.errors, []);
     } finally {
-      if (observing) {
-        try { evidence.final = await options.evaluate(readSoundObservation); }
-        finally {
-          await options.evaluate(() => { window.__bdSoundObservation.restore(); delete window.__bdSoundObservation; });
+      try {
+        if (observing) {
+          try { evidence.final = await options.evaluate(readSoundObservation); }
+          finally {
+            await options.evaluate(() => { window.__bdSoundObservation.restore(); delete window.__bdSoundObservation; });
+          }
         }
+      } finally {
+        if (nativeClock) { await nativeClock.close(); evidence.nativeAudioClock = nativeClock.read(); }
+        if (e.result) e.result.focusSoundEvidence = evidence;
+        if (e.testInfo) await e.testInfo.attach('focus-sound', { body: JSON.stringify(evidence, null, 2), contentType: 'application/json' });
+        await soundView.close();
       }
-      if (e.result) e.result.focusSoundEvidence = evidence;
-      if (e.testInfo) await e.testInfo.attach('focus-sound', { body: JSON.stringify(evidence, null, 2), contentType: 'application/json' });
-      await soundView.close();
     }
   }
 }, {

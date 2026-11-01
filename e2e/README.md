@@ -1,5 +1,27 @@
 # BlockDistraction Chromium E2E
 
+## Native audio clock evidence (tests only, 2026-11-01)
+
+[Run 41091275988](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/41091275988)
+passed 54 core scenarios and failed 68 at `audio_playback_timeout` after 2597 ms.
+Unobserved cold preview 69 passed in 939 ms. The existing evidence shows offscreen
+creation and no content activation, but does not contain the audio clock during
+the failed playback. Post-cleanup PulseAudio output cannot establish its earlier
+stream state. The native cause remains unconfirmed.
+
+Scenario 68 now records CDP WebAudio context state and `currentTime` samples from
+only its owned offscreen target. A running-context event starts bounded read-only
+PulseAudio queries, including stream cork/latency details. The `focus-sound`
+attachment contains `nativeAudioClock` and `inFlightAudioOutput`, with timestamps,
+explicit diagnostic errors and dropped-record counts. Missing samples mean the
+clock is unknown. A flat clock versus an advancing clock narrows the next
+investigation; neither is proof of physical sound or delivery of `ended`.
+
+The recorder does not evaluate content, resume audio, pause targets or change
+autoplay. It can still affect timing through observation. Scenario 69 remains
+the independent unobserved control. Runtime 5.5.5, playback deadlines, activation
+checks, assertions and zero retries are unchanged. A new native CI run is required.
+
 ## Interrupted mutations and native DNR continuity (tests only, 2026-10-28)
 
 Scenarios 70–72 add two owned-process SIGKILL/recovery checkpoints and real
