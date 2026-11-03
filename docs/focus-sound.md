@@ -159,3 +159,27 @@ Existing CI job deadlines and zero-retry policy stay unchanged.
 Run both native sound scenarios from e2e/: Chromium npm test -- focus-sound.spec.mjs;
 Firefox node runner.mjs --filter=68, then --filter=69. Physical Android/macOS/Edge
 and speaker-volume acceptance remain separate.
+
+## Hosted null-sink buffer, 2026-11-03
+
+Run 41346219144 at 5218f216 still fails scenario 68's first preview with
+audio_playback_timeout after 2611ms. Its native CDP record shows a running
+AudioContext whose currentTime stays at 0.01161s for 1901ms, then advances only
+to 0.476s before cleanup. The concurrent PulseAudio 16.1 snapshot reports an
+uncorked, unmuted Chromium stream with 1951653us sink latency. Scenario 69's
+fresh-profile unobserved preview succeeds in 2275ms; fresh browser profiles do
+not reset the shared host audio server.
+
+PulseAudio's [16.1 null-sink implementation](https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/modules/module-null-sink.c)
+uses a 2s default block and maximum sink latency. Its supported norewinds=1
+option sets both to 50ms. CI audio setup now selects that mode and prints the
+sink details. This addresses the measured virtual-output buffering as the
+leading explanation for the stalled clock; a new hosted run must confirm
+whether it resolves scenario 68. The evidence does not establish observer
+interference or a production playback defect.
+
+No browser audio warm-up, silent stream, synthetic completion or deadline
+increase is used. The player, 2500ms phase bounds, 4000ms owner bound and native
+scenario assertions remain unchanged. Local Node checks and package comparison
+do not replace native CI acceptance: this workspace denies Unix-domain socket
+binding and cannot run the hosted desktop/audio setup.
