@@ -1,5 +1,18 @@
 # BlockDistraction Chromium E2E
 
+## Android Daily Limit candidate **5.5.6** (2026-11-03)
+
+Node/API-model regressions cover an inactive Always rule changed to Daily Limit,
+foreground page visibility boundaries, missing Android window-focus events,
+and exclusion of hidden time. The injected observer is exercised in an isolated
+VM; these checks do not establish native Android timing. Current native CI and
+real-device acceptance remain required after applying this candidate.
+
+On a real device, edit an inactive Always rule into Daily Limit, save it, return
+to an already-open matching page and time two minutes with the screen on.
+Check usage, then compare visible intervals around screen-off. A Daily Limit
+rule saved with the older hidden disabled flag needs one Edit → Save.
+
 ## Native audio clock evidence (tests only, 2026-11-01)
 
 [Run 41091275988](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/41091275988)

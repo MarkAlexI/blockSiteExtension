@@ -27,7 +27,8 @@ import { createRulesMigrationService } from '../rules/rulesMigrationService.js';
 import { claimRulesMigrationNotice } from '../rules/rulesMigrationNotice.js';
 import { GENERAL_RULE_LIST_ID, RuleListsManager } from '../rules/ruleListsManager.js';
 import { DailyLimitManager } from '../rules/dailyLimitManager.js';
-import { createDailyLimitTracker, DAILY_LIMIT_DEADLINE_ALARM } from '../rules/dailyLimitTracker.js';
+import { createDailyLimitTracker, DAILY_LIMIT_DEADLINE_ALARM, DAILY_LIMIT_VISIBILITY_MESSAGE,
+  isDailyLimitVisibilitySender } from '../rules/dailyLimitTracker.js';
 import { createRulesMutationService, serializeRulesMutationError } from '../rules/rulesMutationService.js';
 import { RULES_INTENT_TYPES, createRulesIntentHandler } from '../rules/rulesIntentRouter.js';
 import { resolveRulePackEntries } from '../rules/rulePacks.js';
@@ -232,6 +233,7 @@ async function settleRulesIntentPostCommitTasks(type, result) {
       logger.info('Rules post-commit Daily Limit cleanup failed:', error);
     }
 
+    await dailyLimitTracker.observeMatchingPages();
     await dailyLimitTracker.sample('rules_intent');
   })();
 
@@ -1487,7 +1489,10 @@ chrome.runtime.onStartup.addListener(() =>
     await checkAndRequestPermissions({ reason: 'startup' }, { notifyIfMissing: true });
 
     await runAsyncHandler(ASYNC_HANDLER_OPERATIONS.STARTUP,
-      () => dailyLimitTracker.sample('startup'));
+      async () => {
+        await dailyLimitTracker.observeMatchingPages();
+        return dailyLimitTracker.sample('startup');
+      });
     logger.log("Extension startup - syncing DNR rules");
     await dnrSynchronizer.requestSync();
 
@@ -1828,6 +1833,20 @@ chrome.runtime.onInstalled.addListener(details =>
 );
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === DAILY_LIMIT_VISIBILITY_MESSAGE) {
+    if (!isDailyLimitVisibilitySender(message, sender, chrome.runtime)) {
+      sendResponse({ success: false, code: 'daily_limit_visibility_forbidden' });
+      return false;
+    }
+    dailyLimitTracker.visibilityChanged({ tabId: sender.tab.id, url: sender.url,
+      visibilityState: message.visibilityState, observedAt: message.observedAt })
+      .then(() => sendResponse({ success: true }), error => {
+        logger.info('Daily limit page visibility sample failed:', error);
+        sendResponse({ success: false, code: 'daily_limit_visibility_failed' });
+      });
+    return true;
+  }
+
   // Leave addressed playback messages to the offscreen document's listener.
   if (message?.target === 'sound-offscreen') return false;
   if (message?.type === 'sound:preview') {

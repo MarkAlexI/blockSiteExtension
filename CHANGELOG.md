@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.6] - 2026-11-03
+
+### Fixed
+- Applying a Daily Limit or schedule clears the hidden manual off-state inherited from an Always rule.
+- Observe native top-frame page visibility so returning from Settings starts Daily Limit accounting before the next minute alarm, and screen-off time is excluded.
+
 ## [5.5.5] - 2026-10-30
 
 ### Fixed

@@ -7,10 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('version').textContent = version;
   
   const features = [
-    "🔔 A built-in Focus completion sound. The Focus Session sound setting now plays a short chime using your device's media volume.",
-    "▶️ Listen before your next session. Open Settings → Basic Settings and use Listen to preview the sound.",
-    "🎛️ Your sound preference stays yours. Turning the Focus sound off keeps the visual completion notification.",
-    "⏰ Quiet recovery. Reopening the browser after an old session has expired won't play a stale sound."
+    "Daily Limits start when you return to a tracked site from Settings, and pause when the page is hidden.",
+    "Switching a disabled Always rule to a Daily Limit or schedule now applies the selected mode."
   ];
   
   const ul = document.getElementById('features');
