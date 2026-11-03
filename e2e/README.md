@@ -1,5 +1,22 @@
 # BlockDistraction Chromium E2E
 
+## Daily Limit mode retention candidate **5.5.7** (2026-11-03)
+
+Node/API-model regressions reproduce loss of spent time on Daily Limit → Always
+or Schedule → Daily Limit, and during startup/update while another mode is selected.
+They cover retained counters, active-time boundaries, allowance changes, list moves,
+storage-failure recovery, deletion and the local-day reset. Current native CI and
+real-device acceptance of this candidate remain required.
+
+Device acceptance: accumulate two minutes, switch modes several times, then set
+a one-minute Daily Limit (already exhausted) and a ten-minute limit (two minutes
+still spent). Restart while Always/Schedule is selected and switch back to Daily
+Limit; the spent time must remain. Time spent in other modes must not accrue.
+
+Manual Android feedback on 5.5.6 confirmed accurate foreground accounting,
+inactive-Always conversion and no extra blank tabs. The browser build was not
+recorded; this feedback does not establish acceptance of the new retention fix.
+
 ## Android Daily Limit candidate **5.5.6** (2026-11-03)
 
 Node/API-model regressions cover an inactive Always rule changed to Daily Limit,
