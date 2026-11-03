@@ -1831,6 +1831,20 @@ chrome.runtime.onInstalled.addListener(details =>
 );
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'rules:health') {
+    let allowed = false;
+    try {
+      const actual = new URL(sender?.url);
+      const expected = new URL(chrome.runtime.getURL('options/options.html'));
+      allowed = Boolean(chrome.runtime.id) && sender?.id === chrome.runtime.id &&
+        actual.protocol === expected.protocol && actual.host === expected.host &&
+        actual.pathname === expected.pathname;
+    } catch { /* A missing or non-Options sender is not a view health check. */ }
+    sendResponse(allowed ? { success: true, protocol: 1 }
+      : { success: false, code: 'rules_health_forbidden' });
+    return false;
+  }
+
   if (message?.type === DAILY_LIMIT_VISIBILITY_MESSAGE) {
     if (!isDailyLimitVisibilitySender(message, sender, chrome.runtime)) {
       sendResponse({ success: false, code: 'daily_limit_visibility_forbidden' });
