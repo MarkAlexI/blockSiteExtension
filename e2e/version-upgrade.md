@@ -1,5 +1,18 @@
 # Native version-update preservation — scenario 67
 
+## Activation candidate — 5.5.10
+
+Fresh current Options must load and receive a real background health reply before
+the retained old Options tab is reloaded. `retainedOptionsBeforeFresh` records
+whether the native browser retained that old client or closed it during update.
+Reloading the old document first could release a waiting worker and mask the
+reported Kiwi failure. The same-process update, preserved Focus, spent usage,
+alarms, DNR and subsequent native rule-action controls remain required.
+
+This is development-package coverage. A browser that closes the old view does
+not exercise a retained-client stall; Kiwi store-update acceptance is separate.
+
+
 ## Current acceptance extension — 5.5.9
 
 Scenario 67 additionally reads the rendered current Options view, verifies both

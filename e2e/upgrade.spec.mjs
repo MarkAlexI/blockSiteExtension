@@ -38,6 +38,7 @@ base('native 5.4.14 to current version update preserves paid state, Focus and sp
         ...await e.worker.evaluate(()=>({id:chrome.runtime.id,version:chrome.runtime.getManifest().version}))}),
       installObserver:async()=>{watermark=e.nativeOwner.activity.snapshot(e.id).events.at(-1)?.sequence||0;},
       events,
+      retainedOptionsState:page=>page.isClosed()?'closed_by_browser':'open',
       reloadRetainedOptions:async page=>{
         if(page.isClosed())return 'closed_by_browser';
         await page.reload({waitUntil:'domcontentloaded'});

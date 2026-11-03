@@ -145,15 +145,20 @@ export async function runVersionUpgrade(e,backend) {
         }, label);
       } finally { evidence.optionsViews[label] = last; }
     };
+    evidence.stage='open fresh Options before reloading the retained tab';
+    evidence.retainedOptionsBeforeFresh = await backend.retainedOptionsState(options);
+    assert.ok(['open', 'closed_by_browser'].includes(evidence.retainedOptionsBeforeFresh));
+    // Readiness includes the real background health reply. Do this before
+    // navigating the old document: its reload could otherwise release a
+    // waiting worker and hide the reported update failure.
+    const current=await e.openOptions();
+    await inspectOptions(current, 'fresh Options before retained-tab reload');
     evidence.stage='reload the retained Options tab';
     // Native browsers may close an extension view on replacement. Record that
     // branch explicitly; never call a newly opened tab a retained-tab reload.
     evidence.retainedOptions = await backend.reloadRetainedOptions(options);
     assert.ok(['reloaded', 'closed_by_browser'].includes(evidence.retainedOptions));
     if (evidence.retainedOptions === 'reloaded') await inspectOptions(options, 'retained tab after reload');
-    evidence.stage='open current Options';
-    const current=await e.openOptions();
-    await inspectOptions(current, 'fresh Options');
     evidence.after=await upgradeUntil(()=>current.evaluate(upgradeSnapshot),v=>v.version===expectedVersion&&
       v.focusSession.focusActive&&v.dnr.length===2&&v.alarms.some(a=>a.name==='end_focus_session'&&
         a.scheduledTime===v.focusSession.focusEndTime),'updated version restores native Focus protection');

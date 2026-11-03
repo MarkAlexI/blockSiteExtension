@@ -2219,3 +2219,90 @@ test('Options health replies only to the owned Options document without reading 
     assert.deepEqual(api.dynamicRules, []);
   });
 });
+
+async function withLifecycleWorker(callback, { failure = null, available = true } = {}) {
+  const names = ['addEventListener', 'skipWaiting', 'clients'];
+  const previous = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const listeners = new Map(), calls = [];
+  const pending = { install: createDeferred(), activate: createDeferred() };
+  const operation = phase => {
+    calls.push(phase);
+    if (failure === `${phase}-sync`) throw new Error('private.example activation failure');
+    if (failure === `${phase}-async`) return Promise.reject(new Error('private.example activation failure'));
+    return pending[phase].promise;
+  };
+  globalThis.addEventListener = (type, listener) => {
+    const current = listeners.get(type) || [];current.push(listener);listeners.set(type, current);
+  };
+  globalThis.skipWaiting = available ? function () {
+    assert.equal(this, globalThis, 'skipWaiting keeps its native receiver');return operation('install');
+  } : undefined;
+  globalThis.clients = available ? { claim() {
+    assert.equal(this, globalThis.clients, 'claim keeps its Clients receiver');return operation('activate');
+  } } : undefined;
+  try {
+    await withWorker(async worker => callback({ ...worker, listeners, calls, pending,
+      dispatch(phase) {
+        const registered = listeners.get(phase) || [];
+        assert.equal(registered.length, 1, `${phase} must be registered in the real worker entry`);
+        const promises = [];
+        registered[0]({ waitUntil(promise) { promises.push(promise); } });
+        assert.equal(promises.length, 1, `${phase} extends its native event synchronously`);
+        return Promise.all(promises);
+      }
+    }), { local: {
+      activeRuleListId: 'general', rules: [makeDailyLimitRule(21, 'general')],
+      dailyRuleUsage: { version: 2, date: getLocalDateKey(), usageSeconds: { '21:general': 120 }, lastSample: null },
+      focusSession: { focusActive: true, focusEndTime: Date.now() + 300000, isHardcore: true, focusMode: 'blacklist' }
+    } });
+  } finally {
+    for (const [name, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);else delete globalThis[name];
+    }
+  }
+}
+
+test('worker install skips client waiting and activation claims clients without changing saved state', async () => {
+  await withLifecycleWorker(async f => {
+    assert.deepEqual(f.calls, [], 'a cold worker import must not run either lifecycle operation');
+    const before = structuredClone({ local: f.api.storage.local.data, sync: f.api.storage.sync.data,
+      dnr: f.api.dynamicRules, updates: f.api.dnrUpdates });
+    let installed = false;
+    const installing = f.dispatch('install').then(() => { installed = true; });
+    await tick();
+    assert.deepEqual(f.calls, ['install']);assert.equal(installed, false);
+    f.pending.install.resolve();await installing;
+    let activated = false;
+    const activating = f.dispatch('activate').then(() => { activated = true; });
+    await tick();
+    assert.deepEqual(f.calls, ['install', 'activate']);assert.equal(activated, false);
+    f.pending.activate.resolve();await activating;
+    assert.deepEqual({ local: f.api.storage.local.data, sync: f.api.storage.sync.data,
+      dnr: f.api.dynamicRules, updates: f.api.dnrUpdates }, before,
+    'activation does not migrate, reset, replay or rewrite rules, usage, Focus, credentials or DNR');
+  });
+});
+
+for (const phase of ['install', 'activate']) for (const mode of ['sync', 'async']) {
+  test(`a ${mode} ${phase} API failure does not reject installation or break the health router`, async () => {
+    await withLifecycleWorker(async f => {
+      await f.dispatch(phase);
+      assert.deepEqual(f.calls, [phase], 'a failed lifecycle operation is not retried');
+      let response;
+      f.api.runtime.onMessage.listeners[0]({ type: 'rules:health' },
+        { id: f.api.runtime.id, url: f.api.runtime.getURL('options/options.html') }, value => { response = value; });
+      assert.deepEqual(response, { success: true, protocol: 1 });
+      assert.equal(f.api.storage.local.data.dailyRuleUsage.usageSeconds['21:general'], 120);
+      assert.equal(f.api.storage.local.data.focusSession.focusActive, true);
+    }, { failure: `${phase}-${mode}` });
+  });
+}
+
+test('an environment without standard worker lifecycle APIs still registers the extension message router', async () => {
+  await withLifecycleWorker(async f => {
+    assert.equal(f.listeners.has('install'), false);
+    assert.equal(f.listeners.has('activate'), false);
+    assert.equal(f.api.runtime.onMessage.listeners.length, 1);
+    assert.deepEqual(f.calls, []);
+  }, { available: false });
+});

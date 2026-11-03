@@ -1,5 +1,21 @@
 # BlockDistraction Chromium E2E
 
+## Chromium worker activation candidate **5.5.10** (2026-11-03)
+
+Kiwi 137 was observed with an old active/stopped worker and a new
+installed/running worker waiting for activation. Closing all extension pages
+allowed the new worker to activate and restored Options. The candidate registers
+synchronous install/activate hooks for `skipWaiting()` and `clients.claim()`.
+The normal extension installation, state migration and mutation handlers remain
+in their existing paths. No new permissions are required.
+
+The real worker entry is exercised by lifecycle API-model tests, including
+pending promises, native receiver binding, unsupported APIs, rejection handling,
+idle imports and preserved saved state. Scenario 67 now checks fresh Options
+readiness before reloading the old tab, retaining Focus/Daily Limit/DNR checks.
+Native CI and Kiwi update acceptance of this candidate are pending.
+See [observed evidence, implementation and acceptance](worker-activation.md).
+
 ## 5.5.9 CI follow-up (2026-11-03)
 
 The new upgrade rule-action control attempted editing during the intentionally

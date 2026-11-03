@@ -7,8 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('version').textContent = version;
   
   const features = [
-    "If Settings cannot load rules, Copy Report now provides troubleshooting details that remain available after restarting the browser.",
-    "Optional telemetry and Pro tips no longer delay the initial rules view.",
+    "Improved extension update handling when Settings is left open.",
+    "If Settings cannot load rules, Copy Report provides troubleshooting details that remain available after restarting the browser.",
     "Switching between Always, Schedule and Daily Limit keeps today's used time, including after a browser restart."
   ];
   

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.10] - 2026-11-03
+
+### Fixed
+- Request activation of a newly installed Chromium worker and claim existing extension clients, targeting the installed-but-waiting update stall observed in Kiwi 137 with Options open.
+- Keep lifecycle operations confined to install/activate events, with rejected API calls handled without rejecting worker installation or replaying saved operations.
+- Check native background readiness from fresh Options before reloading the retained pre-update tab, so that navigating the old client cannot hide a waiting-worker failure.
+
+Native CI and real-device update acceptance of this mitigation remain required. It does not establish a cure for every reported post-update failure.
+
 ## [5.5.9] - 2026-11-03
 
 ### Added

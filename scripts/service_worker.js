@@ -55,6 +55,28 @@ import { createSoundService } from '../utils/soundService.js';
 import { createFocusSoundController, isSoundPreviewSender } from '../utils/focusSound.js';
 
 const logger = new Logger('Worker');
+
+// Some Chromium builds leave the new worker waiting while an old Options
+// document is open. Register these hooks synchronously, before initialization.
+// Let the browser activate this packaged worker and claim this extension's
+// clients; the hooks do not run on ordinary idle wakes or rewrite saved state.
+if (typeof globalThis.addEventListener === 'function') {
+  if (typeof globalThis.skipWaiting === 'function') {
+    globalThis.addEventListener('install', event => {
+      event.waitUntil(Promise.resolve().then(() => globalThis.skipWaiting()).catch(() => {
+        logger.warn('Worker activation: skip_waiting_failed');
+      }));
+    });
+  }
+  if (typeof globalThis.clients?.claim === 'function') {
+    globalThis.addEventListener('activate', event => {
+      event.waitUntil(Promise.resolve().then(() => globalThis.clients.claim()).catch(() => {
+        logger.warn('Worker activation: claim_failed');
+      }));
+    });
+  }
+}
+
 const focusSound = createFocusSoundController({
   service: createSoundService({ api: chrome }),
   getSettings: options => SettingsManager.getSettings(options)
