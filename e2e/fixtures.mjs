@@ -6,7 +6,7 @@ import { createServer } from 'node:net';
 import { launchNativeChromium, targetsAt } from './native-launch.mjs';
 import { interruptProfileBrowser } from './native-process-interruption.mjs';
 import { connectPreparedNativeBrowser } from './native-connection.mjs';
-import { installNativeStartupExtension, persistentStartupArgs } from './native-install.mjs';
+import { installNativeStartupExtension, persistentStartupArgs, requiresNativeInstallReadiness } from './native-install.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
 import { observeColdWorker, evaluateColdProducer } from './native-cold-message.mjs';
 import { triggerColdMessages } from './cold-message.mjs';
@@ -131,10 +131,12 @@ export class ExtensionHarness {
       // connection on this fixture's isolated persistent profile.
       const port = await freePort();
       const persistentInstall = this.testInfo.tags.includes('@native-startup-restore');
+      const startupArgs = persistentInstall ? persistentStartupArgs(launchOptions.args) : launchOptions.args;
+      const waitForInstall = requiresNativeInstallReadiness({ installed: this.installed, args: startupArgs });
       this.nativeOwner = await launchNativeChromium({
         executablePath: launchOptions.executablePath || chromium.executablePath(),
         profile: this.profile, port, headless: launchOptions.headless,
-        args: persistentInstall ? persistentStartupArgs(launchOptions.args) : launchOptions.args, env: launchOptions.env,
+        args: startupArgs, env: launchOptions.env,
         activityLog: this.testInfo.tags.includes('@native-activity-log'), restoreSession
       });
       let setupStage = 'install, prepare pages and connect';
@@ -142,8 +144,10 @@ export class ExtensionHarness {
         // --lang=en-US falls back to the installed English catalog. The real
         // Options title proves its native translation completed; fetching or
         // replacing translations in the renderer would hide an empty bundle.
-        const installTitle = this.installed ? undefined : JSON.parse(await readFile(
-          path.join(this.extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message;
+        // CLI relaunches install again too. The profile's seeded/installed flag
+        // cannot bypass the same native-localization barrier on restart.
+        const installTitle = waitForInstall ? JSON.parse(await readFile(
+          path.join(this.extensionPath, '_locales', 'en', 'messages.json'), 'utf8')).header?.message : undefined;
         this.nativeBrowser = await connectPreparedNativeBrowser(chromium, this.nativeOwner, {
           install: persistentInstall && !this.installed ? async browser => {
             setupStage = 'persistent native installation';
@@ -164,7 +168,7 @@ export class ExtensionHarness {
             });
             setupStage = 'wait for localized install view before installer disconnect';
           } : undefined,
-          prepareOptions: { waitForInstall: !this.installed, installTitle, restoreSession },
+          prepareOptions: { waitForInstall, installTitle, restoreSession },
           onPrepared: prepared => this.testInfo.attach('native-pages-before-cdp', {
             contentType: 'application/json', body: JSON.stringify(prepared)
           })

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { nativeChromiumArgs, prepareNativePages } from '../e2e/native-launch.mjs';
+import { requiresNativeInstallReadiness } from '../e2e/native-install.mjs';
 
 test('native visibility launch and restart use the same explicit isolated profile', () => {
   const config = { profile: '/tmp/isolated profile', port: 12345, headless: false, args: ['--load-extension=/tmp/extension'] };
@@ -85,6 +86,30 @@ test('fresh native setup keeps the install view while its native translation is 
   const result = await preparing;
   assert.deepEqual(result.installReady, { id: options.id, title: installTitle, expectedTitle: installTitle });
   assert.deepEqual(result.remainingTargets, [worker, keeper]);
+});
+
+test('a CLI-loaded native restart keeps its new install view until localization completes', async t => {
+  const loading = { ...options, title: 'Options page for BlockDistraction' };
+  const api = await devtools(t, [blank, worker, loading]);
+  const waitForInstall = requiresNativeInstallReadiness({ installed: true, args: ['--load-extension=/owned/runtime'] });
+  const preparing = prepareNativePages(api.endpoint, { waitForInstall, installTitle, timeout: 2000 });
+  await api.polled;
+  assert.ok(api.requests.every(request => request.url === '/json/list'),
+    'a seeded profile must not cause early cleanup of a new command-line installation');
+  assert.deepEqual([...api.targets.values()], [blank, worker, loading]);
+  api.targets.set(options.id, options);
+  const result = await preparing;
+  assert.deepEqual(result.installReady, { id: options.id, title: installTitle, expectedTitle: installTitle });
+  assert.deepEqual(result.remainingTargets, [worker, keeper]);
+});
+
+test('a CLI-loaded restart with empty native localization fails before hiding its install page', async t => {
+  const untranslated = { ...options, title: 'header' };
+  const api = await devtools(t, [blank, worker, untranslated]);
+  const waitForInstall = requiresNativeInstallReadiness({ installed: true, args: ['--load-extension=/owned/runtime'] });
+  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall, installTitle }), /install localization failed/);
+  assert.deepEqual([...api.targets.values()], [blank, worker, untranslated]);
+  assert.deepEqual(api.requests, [{ method: 'GET', url: '/json/list' }]);
 });
 
 test('a native translation key fails fresh setup without closing or reloading the install view', async t => {

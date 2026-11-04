@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
-import { installNativeStartupExtension, persistentStartupArgs } from '../e2e/native-install.mjs';
+import { installNativeStartupExtension, persistentStartupArgs, requiresNativeInstallReadiness } from '../e2e/native-install.mjs';
 
 const source = '/owned/test-extension with spaces', id = 'a'.repeat(32), version = '5.3.27';
 const pid = 741, dialog = '123', title = 'Select the extension directory';
@@ -75,6 +75,23 @@ test('startup launches remove both temporary command-line installation switches 
     '--host-resolver-rules=MAP *.bd-e2e.test 127.0.0.1', '--disable-gpu'];
   assert.deepEqual(persistentStartupArgs(args), args.slice(2));
   assert.equal(args.length, 4, 'other native fixtures retain their original arguments');
+});
+
+test('a seeded native CLI restart still requires the new install view to finish localization', () => {
+  const args = ['--load-extension=/owned/test-extension', '--disable-extensions-except=/owned/test-extension',
+    '--host-resolver-rules=MAP *.bd-e2e.test 127.0.0.1'];
+  assert.equal(requiresNativeInstallReadiness({ installed: false, args }), true);
+  assert.equal(requiresNativeInstallReadiness({ installed: true, args }), true,
+    'the previous native restart skipped readiness solely because installed was true');
+  assert.equal(args.length, 3, 'readiness does not alter native launch arguments');
+});
+
+test('permanently registered startup profiles retain their original restore path without a new install wait', () => {
+  const args = persistentStartupArgs(['--load-extension=/owned/test-extension',
+    '--disable-extensions-except=/owned/test-extension', '--host-resolver-rules=MAP *.bd-e2e.test 127.0.0.1']);
+  assert.equal(requiresNativeInstallReadiness({ installed: false, args }), true, 'first native installation still waits');
+  assert.equal(requiresNativeInstallReadiness({ installed: true, args }), false,
+    'a real existing installation does not create a new onInstalled page');
 });
 test('persistent setup selects the real owned Load unpacked folder dialog without protocol drag', async () => {
   const f = fixture(), result = await install(f);

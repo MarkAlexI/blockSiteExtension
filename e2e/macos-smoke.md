@@ -58,8 +58,10 @@ days. On failure/cancellation, Playwright reports, screenshots and traces are
 retained for three days. Successful jobs upload the small result/provenance files
 without their large trace directories.
 
-The initial macOS run must still be executed and inspected on GitHub. Local
-unit checks and `--list` only verify the harness/selection, not macOS behavior.
+The initial macOS run was inspected: arm64 completed 23/24 and x64 was cancelled.
+See the [native setup correction and evidence](ci-follow-up-2026-11-05.md).
+The next macOS run must confirm acceptance. Local unit checks and `--list`
+verify the harness/selection, not macOS behavior.
 Extension version **5.5.10** is unchanged because this change affects only CI,
 test selection, acceptance checks and developer documentation.
 

@@ -15,6 +15,13 @@ export function persistentStartupArgs(args) {
   return args.filter(arg => !arg.startsWith('--load-extension=') && !arg.startsWith('--disable-extensions-except='));
 }
 
+export function requiresNativeInstallReadiness({ installed, args }) {
+  // --load-extension performs a new installation on each native process
+  // launch, even if this harness has already installed/seeded the profile.
+  // Its new onInstalled view must finish native localization before cleanup.
+  return !installed || args.some(arg => arg.startsWith('--load-extension='));
+}
+
 async function waitForNativeInstallation(page, source, version, timeout, deadline, evidence) {
   const expired = () => new Error(`native installed identity did not match within ${timeout}ms`);
   for (;;) {

@@ -5,7 +5,8 @@
 The workflow additionally runs 24 existing acceptance scenarios on Apple Silicon
 and Intel macOS. Linux and both Mac jobs must pass the final `e2e` check.
 See [browser setup, coverage and evidence limits](macos-smoke.md).
-The first native macOS run still needs GitHub acceptance.
+The initial arm64 run completed 23/24 and exposed an empty native i18n state
+after restart; x64 was cancelled. See the [native setup follow-up](ci-follow-up-2026-11-05.md).
 
 ## Chromium worker activation candidate **5.5.10** (2026-11-03)
 
