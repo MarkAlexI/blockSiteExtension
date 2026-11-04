@@ -58,10 +58,11 @@ days. On failure/cancellation, Playwright reports, screenshots and traces are
 retained for three days. Successful jobs upload the small result/provenance files
 without their large trace directories.
 
-The initial macOS run was inspected: arm64 completed 23/24 and x64 was cancelled.
-See the [native setup correction and evidence](ci-follow-up-2026-11-05.md).
-The next macOS run must confirm acceptance. Local unit checks and `--list`
-verify the harness/selection, not macOS behavior.
+Native run 41924762714 passed 24/24 on Intel. Apple Silicon completed 23/24:
+the earlier restart case passed, while another fixture failed at startup target
+discovery before its body. See the [setup correction and evidence](ci-follow-up-2026-11-05.md).
+The next macOS run must confirm acceptance after that correction. Local unit
+checks and `--list` verify the harness/selection, not macOS behavior.
 Extension version **5.5.10** is unchanged because this change affects only CI,
 test selection, acceptance checks and developer documentation.
 

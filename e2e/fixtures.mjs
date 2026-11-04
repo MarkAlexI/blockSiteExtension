@@ -188,6 +188,7 @@ export class ExtensionHarness {
               ...await this.nativeOwner.diagnostics(), setupStage, error: String(error),
               installation: this.startupInstallation ?? null,
               nativeInstallationFailure: error.nativeInstallation ?? null,
+              readinessFailure: error.nativeReadiness ?? null,
               installMessages: this.nativeInstallMessages ?? [],
               connected: this.nativeBrowser?.isConnected() ?? false
             })

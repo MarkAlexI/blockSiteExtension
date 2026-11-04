@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { nativeChromiumArgs, prepareNativePages } from '../e2e/native-launch.mjs';
+import { nativeChromiumArgs, prepareNativePages, targetsAt } from '../e2e/native-launch.mjs';
 import { requiresNativeInstallReadiness } from '../e2e/native-install.mjs';
 
 test('native visibility launch and restart use the same explicit isolated profile', () => {
@@ -21,7 +21,7 @@ test('native visibility launch and restart use the same explicit isolated profil
   assert.equal(nativeChromiumArgs({ ...config, headless: true }).includes('--headless=new'), true);
 });
 
-async function devtools(t, initial) {
+async function devtools(t, initial, { stallListReads = 0, listStatus = 200, listBody } = {}) {
   const targets = new Map(initial.map(target => [target.id, target]));
   const requests = [];
   let secondRead;
@@ -31,8 +31,10 @@ async function devtools(t, initial) {
     requests.push({ method: request.method, url: request.url });
     response.setHeader('content-type', 'application/json');
     if (request.url === '/json/list') {
-      response.end(JSON.stringify([...targets.values()]));
       if (++reads === 2) secondRead();
+      if (reads <= stallListReads) return; // Browser is listening but not yet serving target discovery.
+      response.statusCode = listStatus;
+      response.end(listBody ?? JSON.stringify([...targets.values()]));
     } else if (request.url === '/json/new?about:blank' && request.method === 'PUT') {
       const target = { id: 'created-blank', type: 'page', url: 'about:blank' };
       targets.set(target.id, target);
@@ -59,6 +61,52 @@ const keeper = { id: 'created-blank', type: 'page', url: 'about:blank' };
 const worker = { id: 'worker', type: 'service_worker', url: 'chrome-extension://test/scripts/service_worker.js' };
 const installTitle = 'Site Blocker';
 const options = { id: 'options', type: 'page', url: 'chrome-extension://test/options/options.html', title: installTitle };
+
+test('startup discovery survives one stalled read within the existing setup deadline without replaying mutations', async t => {
+  const api = await devtools(t, [blank, worker, options], { stallListReads: 1 });
+  const result = await prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 2500 });
+  assert.deepEqual(result.installReady, { id: options.id, title: installTitle, expectedTitle: installTitle });
+  assert.deepEqual(result.remainingTargets, [worker, keeper]);
+  assert.equal(result.targetDiscovery.transientFailures.length, 1);
+  assert.equal(result.targetDiscovery.transientFailures[0].name, 'TimeoutError');
+  assert.deepEqual(api.requests.slice(0, 2), [
+    { method: 'GET', url: '/json/list' }, { method: 'GET', url: '/json/list' }
+  ]);
+  assert.equal(api.requests.filter(r => r.url === '/json/new?about:blank').length, 1);
+  assert.equal(api.requests.filter(r => r.url === '/json/close/blank').length, 1);
+  assert.equal(api.requests.filter(r => r.url === '/json/close/options').length, 1);
+});
+
+test('startup discovery exhausts its original total budget without clearing pages or starting a scenario', async t => {
+  const api = await devtools(t, [blank, worker, options], { stallListReads: Infinity });
+  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 150 }),
+    error => {
+      assert.match(error.message, /startup target discovery exceeded the setup deadline/);
+      assert.equal(error.nativeReadiness.phase, 'target-discovery');
+      assert.equal(error.nativeReadiness.budgetMs, 150);
+      assert.equal(error.nativeReadiness.attempts, 1);
+      assert.equal(error.cause.name, 'TimeoutError');
+      return true;
+    });
+  assert.ok(api.requests.every(request => request.url === '/json/list'));
+  assert.deepEqual([...api.targets.values()], [blank, worker, options]);
+});
+
+test('startup discovery does not mask HTTP or malformed-protocol failures as temporary readiness', async t => {
+  for (const failure of [{ listStatus: 500 }, { listBody: 'invalid JSON' }, { listBody: '{}' }]) {
+    const api = await devtools(t, [blank, worker, options], failure);
+    await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 500 }));
+    assert.deepEqual(api.requests, [{ method: 'GET', url: '/json/list' }]);
+    assert.deepEqual([...api.targets.values()], [blank, worker, options]);
+  }
+});
+
+test('strict target observers outside startup retain one request without continuation', async t => {
+  const api = await devtools(t, [blank, worker, options], { stallListReads: 1 });
+  await assert.rejects(targetsAt(api.endpoint, { timeout: 30 }), { name: 'TimeoutError' });
+  assert.deepEqual(api.requests, [{ method: 'GET', url: '/json/list' }]);
+  assert.deepEqual([...api.targets.values()], [blank, worker, options]);
+});
 
 test('fresh native setup waits for the real post-initialization install page before clearing tabs', async t => {
   const api = await devtools(t, [blank, worker]);

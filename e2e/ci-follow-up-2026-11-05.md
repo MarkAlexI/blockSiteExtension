@@ -40,8 +40,41 @@ explicit rejection of a literal translation key without closing/reloading that
 view. Existing 15-second setup/scenario deadlines, native i18n assertions,
 visibility checks, 24/24 acceptance and zero retries remain unchanged.
 
-This corrects a demonstrated missing setup barrier. It remains a hypothesis
-that premature cleanup caused the browser's empty native i18n cache: the next
-real macOS run must confirm the effect. A still-empty native catalog fails setup;
-there is no fallback catalog, reload retry, skipped scenario or claimed product
-fix. Runtime sources and extension version 5.5.10 are unchanged.
+This corrected a demonstrated missing setup barrier. In the subsequent native
+run below, scenario 20 passed on both Mac architectures. That observation is
+limited to the inspected runs, not a guarantee about every browser i18n failure.
+A still-empty native catalog fails setup; no fallback catalog or reload retry
+was added. Runtime sources and extension version 5.5.10 are unchanged.
+
+## Subsequent native run: startup target discovery
+
+[Run 41924762714](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/41924762714),
+commit `bafcb92d73cafbbf77d012926e6289b788512f17`, passed all four Linux groups
+and Extension CI. Intel macOS passed **24/24**, including report verification.
+Apple Silicon completed 23/24; the previous reader/restart scenario passed.
+
+The new arm64 failure was in scenario 08's **fixture setup**, before its body
+started. The first `GET /json/list` timed out at its one-second request limit.
+The owned process was still running, and the subsequent diagnostic query
+successfully returned its blank tab and browser-UI target. No accounting or
+visibility assertion ran in that failed scenario.
+
+`prepareNativePages` now continues read-only target discovery after explicit
+transport/timeout failures, within its original **15-second total setup budget**.
+Each request still has at most one second and is capped by the remaining total
+budget. HTTP errors, malformed JSON and non-list responses fail immediately.
+The existing install/localization guard and its deadline remain in place.
+
+Only `GET /json/list` startup observations continue this way. Target creation,
+closure, installation, messages and scenario bodies are not replayed. Ordinary
+`targetsAt` calls, idle/cold-worker observation and native session restoration
+retain their strict single-request behavior. Successful setup receipts record
+attempts/transient failures; exhausted discovery records its original budget,
+attempt count and cause in `readinessFailure`.
+
+The stalled-first-response regression failed on the preceding code and passes
+after this change. Negative controls retain total-budget failure without page
+mutation, immediate HTTP/protocol failure, and strict non-startup observation.
+These are real loopback HTTP harness tests, not native macOS acceptance. The
+next GitHub Mac run must confirm this setup change. The 24/24 gate, zero scenario
+retries, workflow budgets, runtime and version remain unchanged.

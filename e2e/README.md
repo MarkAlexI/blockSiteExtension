@@ -5,8 +5,9 @@
 The workflow additionally runs 24 existing acceptance scenarios on Apple Silicon
 and Intel macOS. Linux and both Mac jobs must pass the final `e2e` check.
 See [browser setup, coverage and evidence limits](macos-smoke.md).
-The initial arm64 run completed 23/24 and exposed an empty native i18n state
-after restart; x64 was cancelled. See the [native setup follow-up](ci-follow-up-2026-11-05.md).
+Run 41924762714 passed 24/24 on Intel. On Apple Silicon, the previous restart
+case passed, but another scenario failed before its body at startup target
+discovery. See the [native setup follow-up](ci-follow-up-2026-11-05.md).
 
 ## Chromium worker activation candidate **5.5.10** (2026-11-03)
 

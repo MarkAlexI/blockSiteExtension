@@ -5,8 +5,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const isInstallPage = target => target.type === 'page' &&
   /^chrome-extension:\/\/[^/]+\/options\/options\.html(?:[?#]|$)/.test(target.url);
 
-export async function targetsAt(endpoint) {
-  const response = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(1000) });
+export async function targetsAt(endpoint, { timeout = 1000 } = {}) {
+  const response = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(timeout) });
   if (!response.ok) throw new Error(`Native Chromium target discovery: HTTP ${response.status}`);
   const targets = await response.json();
   if (!Array.isArray(targets)) throw new Error('Native Chromium target discovery returned no list');
@@ -29,7 +29,33 @@ export async function prepareNativePages(endpoint, {
     throw new Error('Native Chromium install readiness requires the installed English header message');
   }
   const deadline = Date.now() + timeout;
-  let targets = await targetsAt(endpoint);
+  const targetDiscovery = { attempts: 0, transientFailures: [] };
+  const readTargets = async () => {
+    let lastError;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      targetDiscovery.attempts++;
+      try {
+        const targets = await targetsAt(endpoint, { timeout: Math.min(1000, remaining) });
+        if (Date.now() < deadline) return targets;
+        break;
+      } catch (error) {
+        const code = error.cause?.code ?? error.code;
+        // Continue only a read-only startup observation. Scenario bodies,
+        // mutations and the strict idle/cold-worker observers never use this.
+        if (!['TimeoutError', 'AbortError'].includes(error.name) &&
+            !['ECONNREFUSED', 'ECONNRESET', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)) throw error;
+        lastError = error;
+        targetDiscovery.transientFailures.push({ name: error.name, code: typeof code === 'string' ? code : null });
+      }
+      await pause(Math.min(100, Math.max(0, deadline - Date.now())));
+    }
+    const error = new Error('Native Chromium startup target discovery exceeded the setup deadline', { cause: lastError });
+    error.nativeReadiness = { phase: 'target-discovery', budgetMs: timeout, ...targetDiscovery };
+    throw error;
+  };
+  let targets = await readTargets();
   let installReady = null;
   while (waitForInstall) {
     const target = targets.find(isInstallPage);
@@ -44,8 +70,9 @@ export async function prepareNativePages(endpoint, {
       const reason = target ? 'install localization not completed' : 'install page not observed';
       throw new Error(`Native Chromium ${reason}: ${JSON.stringify(targets)}`);
     }
-    await pause(100);
-    targets = await targetsAt(endpoint);
+    await pause(Math.min(100, Math.max(0, deadline - Date.now())));
+    // Let the existing install/localization assertion report its own deadline.
+    if (Date.now() < deadline) targets = await readTargets();
   }
   // onInstalled creates Options only after initializeExtension and the host
   // permission check finish. is_migrated_to_local alone is an earlier marker.
@@ -67,7 +94,7 @@ export async function prepareNativePages(endpoint, {
   if (!keeper.id || keeper.type !== 'page' || keeper.url !== 'about:blank') {
     throw new Error(`Native Chromium unexpected blank page: ${JSON.stringify(keeper)}`);
   }
-  targets = await targetsAt(endpoint);
+  targets = await readTargets();
   const closedTargets = [];
   do {
     for (const target of targets.filter(target => target.type === 'page' && target.id !== keeper.id)) {
@@ -79,7 +106,7 @@ export async function prepareNativePages(endpoint, {
       }
       closedTargets.push({ id: target.id, url: target.url });
     }
-    targets = await targetsAt(endpoint);
+    targets = await readTargets();
     if (!targets.some(target => target.type === 'page' && target.id !== keeper.id)) break;
     if (Date.now() >= deadline) throw new Error(`Native Chromium page cleanup timed out: ${JSON.stringify(targets)}`);
     await pause(100);
@@ -87,7 +114,7 @@ export async function prepareNativePages(endpoint, {
   if (!targets.some(target => target.type === 'page' && target.id === keeper.id && target.url === 'about:blank')) {
     throw new Error('Native Chromium page cleanup lost the last blank browser tab');
   }
-  return { installObserved, installReady, keeper, closedTargets, remainingTargets: targets };
+  return { installObserved, installReady, keeper, closedTargets, remainingTargets: targets, targetDiscovery };
 }
 
 export function nativeChromiumArgs({ profile, port, headless, args = [], activityLog = false, restoreSession = false }) {
