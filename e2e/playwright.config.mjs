@@ -2,6 +2,8 @@ import { defineConfig } from 'playwright/test';
 import { selectTestFiles } from './spec-groups.mjs';
 
 export default defineConfig({
+  metadata: { platform: process.platform, architecture: process.arch, node: process.version,
+    group: process.env.BD_E2E_GROUP || 'all' },
   testDir: '.',
   testMatch: selectTestFiles(process.env.BD_E2E_GROUP),
   fullyParallel: false,

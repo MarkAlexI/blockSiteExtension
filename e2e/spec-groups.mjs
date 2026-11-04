@@ -39,8 +39,16 @@ const lifecycleFiles = new Set([
   'mutation-recovery.spec.mjs'
 ]);
 
+// Same initial acceptance scope as Firefox's 24 macOS smoke scenarios. These
+// files use native headed browsers without Linux-only shortcuts or audio.
+export const macosSmokeFiles = Object.freeze([
+  'chromium.spec.mjs', 'readers.spec.mjs', 'stale.spec.mjs',
+  'focus.spec.mjs', 'frames-native.spec.mjs'
+]);
+
 export function selectTestFiles(group = 'all') {
-  if (!['all', 'core', 'lifecycle', 'overdue', 'upgrade'].includes(group)) throw new Error(`Unknown BD_E2E_GROUP: ${group}`);
+  if (!['all', 'core', 'lifecycle', 'overdue', 'upgrade', 'macos-smoke'].includes(group)) throw new Error(`Unknown BD_E2E_GROUP: ${group}`);
+  if (group === 'macos-smoke') return testFiles.filter(file => macosSmokeFiles.includes(file));
   return testFiles.filter(file => group === 'all' ||
     (file === 'upgrade.spec.mjs' ? group === 'upgrade' :
       file === 'overdue.spec.mjs' ? group === 'overdue' :

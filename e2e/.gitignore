@@ -2,4 +2,5 @@ node_modules/
 test-results/
 playwright-report/
 results.json
+macos-environment.json
 upgrade-baseline.local.json
