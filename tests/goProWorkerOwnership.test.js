@@ -8,6 +8,7 @@ import {
   withExtensionEnvironment
 } from './helpers/extensionTestHarness.js';
 import { LICENSE_SYNC_TIMEOUT_MS, VERIFY_API_URL } from '../utils/constants.js';
+import { readProPanelReadiness } from '../e2e/pro-panel-readiness.mjs';
 
 let goProImportId = 0;
 
@@ -768,6 +769,62 @@ test('logout is available for a retained inactive key and stops its local recove
     assert.equal(api.storage.sync.data.credentials.licenseKey, null);
     assert.equal(accountActions.hidden, true);
     assert.equal(document.getElementById('pro-activate-view').hidden, false);
+  });
+});
+
+test('E2E readiness waits for the opening Pro panel despite stationary child geometry', async () => {
+  await withGoProPage({ isPro: true }, async ({
+    document, toggle, wrapper, logout, statusMessages, credentialWrites, api
+  }) => {
+    await new Promise(resolve => setImmediate(resolve));
+    const animation = { playState: 'running', pending: false };
+    wrapper.getAnimations = () => [animation];
+    wrapper.clientHeight = 40;
+    await toggle.dispatch('click');
+    // The old precondition already succeeds while the ancestor still clips the
+    // button. Browser-owned layout/animation values are modelled here, not a
+    // reproduction of native pointer dispatch on macOS.
+    assert.equal(wrapper.classList.contains('open') && !wrapper.inert, true);
+    assert.deepEqual(readProPanelReadiness(), {
+      open: true, inert: false, fullyExpanded: false, animating: true
+    });
+    wrapper.clientHeight = wrapper.scrollHeight;
+    assert.equal(readProPanelReadiness().animating, true, 'full height alone cannot finish an animation');
+    animation.playState = 'finished';
+    animation.pending = true;
+    assert.equal(readProPanelReadiness().animating, true, 'a pending animation is not settled');
+    animation.pending = false;
+    await wrapper.dispatch('transitionend', { propertyName: 'max-height' });
+    const before = JSON.stringify(api.storage.sync.data);
+    const focus = document.activeElement;
+    assert.deepEqual(readProPanelReadiness(), {
+      open: true, inert: false, fullyExpanded: true, animating: false
+    });
+    assert.equal(document.activeElement, focus, 'observation cannot focus or activate the button');
+    assert.equal(JSON.stringify(api.storage.sync.data), before);
+    assert.deepEqual(statusMessages, []);
+    assert.deepEqual(credentialWrites, []);
+    await logout.dispatch('click');
+    assert.deepEqual(statusMessages, [{ type: 'logout_pro' }]);
+    assert.equal(api.storage.sync.data.credentials.isPro, false);
+  });
+});
+
+test('E2E readiness rejects missing, closed and inert Pro panels even at full height', async () => {
+  await withGoProPage({}, async ({ document, toggle, wrapper }) => {
+    await new Promise(resolve => setImmediate(resolve));
+    wrapper.getAnimations = () => [];
+    wrapper.clientHeight = wrapper.scrollHeight;
+    assert.deepEqual(readProPanelReadiness(), {
+      open: false, inert: true, fullyExpanded: true, animating: false
+    });
+    await toggle.dispatch('click');
+    wrapper.inert = true;
+    assert.equal(readProPanelReadiness().inert, true);
+    wrapper.remove();
+    assert.deepEqual(readProPanelReadiness(), {
+      open: false, inert: true, fullyExpanded: false, animating: false
+    });
   });
 });
 

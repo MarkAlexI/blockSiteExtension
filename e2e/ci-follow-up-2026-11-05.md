@@ -78,3 +78,45 @@ mutation, immediate HTTP/protocol failure, and strict non-startup observation.
 These are real loopback HTTP harness tests, not native macOS acceptance. The
 next GitHub Mac run must confirm this setup change. The 24/24 gate, zero scenario
 retries, workflow budgets, runtime and version remain unchanged.
+
+## Subsequent native run: Pro panel action during expansion
+
+[Run 41931618978](https://github.com/MarkAlexI/blockSiteExtension/actions/runs/41931618978),
+commit `f0380533e20b00577d607bbda204cf37f53000df`, passed all four Linux groups
+and Extension CI. Apple Silicon passed **24/24**, including report verification.
+Intel completed **23/24**, failing scenario 10 after its logout click: saved
+`credentials.isPro` stayed true for the original 15-second assertion. Native
+localization was correct in the worker and both Options pages.
+
+The Playwright trace establishes a missing UI precondition. The logout action
+started about 6 ms after the Pro-toggle click completed. The ancestor was still
+in its 400 ms `max-height` transition, visibly clipping the panel. Playwright
+reported the child button stable, then its scroll-into-view operation scrolled
+the `overflow: hidden` wrapper. The input snapshot records wrapper `scrollTop`
+224; the after snapshot 16 ms later records 207. The pointer coordinates did
+not move with that 17 px layout shift. This can lose a click between pointer
+press and release. The trace did not record DOM pointer events or worker
+message receipt, so the precise event-dispatch outcome is not established.
+
+The four Pro-action scenarios in `chromium.spec.mjs` now open the panel once
+and observe that it is open, non-inert, fully expanded and has no running or
+pending panel animation. Only then do the existing Playwright fill/click actions
+run. This is read-only preparation before the action, with the existing default
+15-second expectation budget. There is no fixed sleep, forced/JavaScript click,
+animation override, repeated logout, credential write or scenario retry. The
+same preparation already exists for Pro controls in the Firefox harness.
+
+Node DOM/API-model checks exercise the reader with the real Pro toggle handler:
+an open, non-inert panel is insufficient while clipped; full height is
+insufficient during a running or pending transition; a settled panel permits
+the subsequent single logout. Missing, closed and inert panels are rejected.
+Observation does not change focus, credentials or worker messages. These models
+do not reproduce macOS pointer dispatch or establish native acceptance.
+
+The original assertions still require both already-open Options pages to lose
+paid controls, subsequent paid intents to fail, the saved key to be cleared,
+and a Free rule to commit and block real navigation. Runtime sources and
+version 5.5.10, all 24 smoke bodies, zero retries and workflow budgets are
+unchanged. A new native run is required to confirm the correction. Local native
+E2E could not run because the browser download returned an unavailable-site
+HTML response instead of the pinned Chromium archive.

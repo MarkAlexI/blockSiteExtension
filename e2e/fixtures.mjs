@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
 import { frameFixtureHtml } from './frame-fixture.mjs';
 import { cleanupDeadline, closeNativeResources } from './bounded-cleanup.mjs';
+import { readProPanelReadiness } from './pro-panel-readiness.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.resolve(process.env.BD_EXTENSION_PATH || path.join(directory, '..'));
@@ -62,6 +63,16 @@ export async function send(page, type, payload = {}) {
       if (error) reject(new Error(error.message)); else resolve(response);
     }));
   }, { type, payload });
+}
+
+export async function openProPanel(page) {
+  await page.locator('#proBtn').click();
+  // Observe full expansion before the single action inside the panel. Native
+  // scrollIntoView can scroll an overflow:hidden ancestor while it is opening;
+  // its changing scroll offset can move the button between mouse down and up.
+  await expect.poll(() => page.evaluate(readProPanelReadiness), {
+    message: 'Pro panel fully expanded and animation settled before its controls are used'
+  }).toEqual({ open: true, inert: false, fullyExpanded: true, animating: false });
 }
 
 export async function addUi(page, blockURL, { dailyMinutes = null } = {}) {

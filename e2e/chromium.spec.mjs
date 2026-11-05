@@ -1,4 +1,4 @@
-import { test, expect, send, addUi, assignment, dailyRule, basicPayload, paidPayload,
+import { test, expect, send, addUi, openProPanel, assignment, dailyRule, basicPayload, paidPayload,
   TEST_KEY, SITE } from './fixtures.mjs';
 
 const rows = page => page.locator('#rules-container tr[data-rule-id]');
@@ -204,7 +204,7 @@ test('UI activation waits for verification while Free actions remain available i
   const a = await e.openOptions();
   const b = await e.openOptions();
   e.holdVerification();
-  await a.locator('#proBtn').click();
+  await openProPanel(a);
   await a.locator('#license-key-input').fill(TEST_KEY);
   await a.locator('#license-submit-btn').click();
   try {
@@ -230,7 +230,7 @@ test('UI activation waits for verification while Free actions remain available i
 test('UI logout propagates to both Options and rejects subsequent paid intents without reload', async ({ extension: e }) => {
   const a = await e.openOptions();
   const b = await e.openOptions();
-  await a.locator('#proBtn').click();
+  await openProPanel(a);
   await a.locator('#log-out-btn').click();
   await expect.poll(async () => (await e.state()).credentials.isPro).toBe(false);
   await expect(a.locator('#add-whitelist-rule')).toBeDisabled();
@@ -279,7 +279,7 @@ test('trusted Legacy keeps advanced controls and paid rule access after UI logou
   await e.seed({ legacy: true });
   const a = await e.openOptions();
   const b = await e.openOptions();
-  await a.locator('#proBtn').click();
+  await openProPanel(a);
   await a.locator('#log-out-btn').click();
   await expect.poll(async () => (await e.state()).credentials.isPro).toBe(false);
   await expect(b.locator('#add-whitelist-rule')).toBeEnabled();
@@ -295,7 +295,7 @@ test('a temporary verification server error preserves Pro and subsequent paid ac
   const a = await e.openOptions();
   const b = await e.openOptions();
   e.verificationHandler = async () => ({ status: 500, body: { error: 'E2E temporary failure' } });
-  await a.locator('#proBtn').click();
+  await openProPanel(a);
   await a.locator('#force-sync-btn').click();
   await expect.poll(() => e.verificationCalls.length).toBeGreaterThan(0);
   await expect(a.locator('#force-sync-btn')).toBeEnabled();
