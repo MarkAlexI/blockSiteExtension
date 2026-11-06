@@ -13,7 +13,7 @@ import { triggerColdMessages } from './cold-message.mjs';
 import { nativeStorageWrite, nativeWakeAlarms } from './native-activity.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import { waitForPreseedStartup } from './preseed-startup.mjs';
-import { readNativeI18n } from './native-i18n.mjs';
+import { readNativeI18n, requireNativeI18n } from './native-i18n.mjs';
 import { readNativeAudioOutput } from './native-audio-output.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,7 +141,10 @@ export class ExtensionHarness {
           ['--host-resolver-rules=MAP *.bd-e2e.test 127.0.0.1, MAP blockdistraction.com ~NOTFOUND'] : []),
         ...(process.env.BD_E2E_DISABLE_GPU === '1' ? ['--disable-gpu'] : [])]
     };
-    if (this.testInfo.tags.includes('@native-visibility')) {
+    // macOS acceptance must also finish the first native locale IPC before a
+    // Playwright client starts attaching renderers. Its ordinary persistent
+    // context path closed the install view as soon as the target existed.
+    if (process.platform === 'darwin' || this.testInfo.tags.includes('@native-visibility')) {
       // A second CDP session cannot release the visibility capture handle
       // held by Playwright's original session. Use the documented noDefaults
       // connection on this fixture's isolated persistent profile.
@@ -221,6 +224,9 @@ export class ExtensionHarness {
     const { worker, identity } = await extensionWorker(this.context, this.manifest);
     this.worker = worker;
     this.id = identity.id;
+    if (process.platform === 'darwin') {
+      await requireNativeI18n(this, worker, 'native-i18n-startup');
+    }
     if (this.startupInstallation) expect(identity.id, 'same permanently registered unpacked extension').toBe(this.startupInstallation.id);
     await this.testInfo.attach('extension-worker', { contentType: 'application/json',
       body: JSON.stringify({ url: worker.url(), ...identity,

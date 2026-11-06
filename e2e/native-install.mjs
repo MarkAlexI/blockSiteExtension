@@ -83,7 +83,8 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
     return title;
   };
   const title = await owned();
-  evidence.dialog = { window, title, pid: browserPid, delivery: 'XTEST', typeDelayMs: 12, closed: false };
+  evidence.dialog = { window, title, pid: browserPid, delivery: 'XTEST', typeDelayMs: 12,
+    entryAttempts: 0, selectedPath: null, closed: false };
   await command(['windowactivate', '--sync', window]);
   const focused = async () => {
     await owned();
@@ -91,20 +92,43 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
       throw new Error('Native extension directory dialog focus changed before input');
     }
   };
-  // GTK's native SELECT_EXISTING_FOLDER dialog uses the normal Open button.
-  // XTEST input goes only to the owned dialog, once; no CDP keyboard or file
-  // chooser API can supply the browser's native path capability here.
+  // Visibility and window focus do not prove GTK's location entry is realized.
+  // Read the real X11 PRIMARY selection after Select All. A dropped input burst
+  // must never be accepted as a successful folder selection. Only the entry
+  // readiness is polled; Load unpacked and its final acceptance happen once.
   evidence.stage = 'focus location entry';
   await focused();
-  await command(['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a']);
-  await focused();
-  evidence.stage = 'type extension directory';
-  // Keep xdotool's normal 12 ms pacing. A zero-delay burst produced GTK
-  // WIDGET_REALIZED_FOR_EVENT failures in the failed native upgrade setup.
-  await command(['type', '--clearmodifiers', '--delay', '12', source]);
+  await command(['key', '--clearmodifiers', 'ctrl+l']);
+  for (;;) {
+    if (Date.now() >= deadline) throw new Error(`Native extension directory entry did not confirm the complete path within ${timeout}ms`);
+    await focused();
+    evidence.stage = 'confirm directory entry';
+    evidence.dialog.entryAttempts++;
+    await command(['key', '--clearmodifiers', 'ctrl+a']);
+    await command(['type', '--clearmodifiers', '--delay', '12', source]);
+    await command(['key', '--clearmodifiers', 'ctrl+a']);
+    await focused();
+    let selectedPath = null;
+    try {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error('Native extension directory entry exhausted its setup deadline');
+      selectedPath = (await run('xclip', ['-selection', 'primary', '-out'],
+        { timeout: Math.min(1000, remaining), env })).stdout;
+    } catch (error) {
+      // A newly realized GTK entry may not own a PRIMARY selection yet.
+      // Backend failures and hung selection owners are genuine setup errors.
+      if (error.code !== 1 || error.killed || error.signal ||
+          !/target .* not available/i.test(error.stderr || error.message)) throw error;
+    }
+    evidence.dialog.selectedPath = selectedPath;
+    if (selectedPath === source) break;
+    await delay(Math.max(0, Math.min(100, deadline - Date.now())));
+  }
   await focused();
   evidence.stage = 'accept extension directory';
-  await command(['key', '--clearmodifiers', 'alt+o']);
+  // Activate the verified location entry itself; GTK resolves the typed folder
+  // before it reports the selected directory to Chromium.
+  await command(['key', '--clearmodifiers', 'Return']);
   evidence.stage = 'wait for directory dialog to close';
   for (;;) {
     if (Date.now() >= deadline) throw new Error(`Native extension directory dialog did not close within ${timeout}ms`);
@@ -135,6 +159,7 @@ export async function installNativeStartupExtension(browser, source, version, ti
     'native installation needs an absolute local extension path without control characters');
   assert.ok(Number.isSafeInteger(browserPid) && browserPid > 0, 'native installation needs an owned Chromium process');
   await nativeTabShortcutBackend({ platform, env, run });
+  await run('xclip', ['-version'], { timeout: 3000, env });
   const [context] = browser.contexts();
   assert.ok(context, 'native default context exists');
   const page = await context.newPage();
