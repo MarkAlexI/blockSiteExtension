@@ -84,7 +84,7 @@ export async function prepareNativePages(endpoint, {
   // A persistent installer is still attached while onInstalled and the first
   // native i18n IPC finish. Disconnect it only after that observation, and
   // before any HTTP target mutation. Keep the same readiness/cleanup deadline.
-  await beforePageCleanup?.();
+  await beforePageCleanup?.({ targets, installReady, timeout: Math.max(1, deadline - now()) });
   // A restored about:blank renderer can also be stale. Create the keeper before
   // closing any old target so headed Chrome never loses its last browser window.
   const response = await fetch(`${endpoint}/json/new?about:blank`, {
@@ -130,6 +130,7 @@ export function nativeChromiumArgs({ profile, port, headless, args = [], activit
 // Launch outside Playwright so its default CDP client cannot emulate page focus.
 // Keep the fixture's explicit user-data-dir across restart.
 export async function launchNativeChromium(config) {
+  const startedAt = Date.now();
   const activity = config.activityLog ? createNativeActivityLog() : null;
   const child = spawn(config.executablePath, nativeChromiumArgs(config), {
     stdio: ['ignore', 'ignore', 'pipe'], env: config.env
@@ -140,6 +141,7 @@ export async function launchNativeChromium(config) {
   child.stderr.once('end', () => activity?.finish());
   const exited = new Promise(resolve => child.once('close', resolve));
   const endpoint = `http://127.0.0.1:${config.port}`;
+  const discovery = { attempts: 0, last: null };
   const owner = { endpoint, activity, async waitForExit(timeout = 5000) {
     let timer;
     try {
@@ -168,15 +170,26 @@ export async function launchNativeChromium(config) {
       if (failure) throw failure;
       if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Native Chromium exited before CDP: ${stderr}`);
       try {
+        discovery.attempts++;
         const response = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1000) });
         const version = await response.json();
+        discovery.last = { status: response.status, hasDebuggerUrl: Boolean(version.webSocketDebuggerUrl) };
         if (response.ok && version.webSocketDebuggerUrl) {
           owner.webSocketDebuggerUrl = version.webSocketDebuggerUrl;
           return owner;
         }
-      } catch { /* Wait only for startup readiness; never retry a scenario body. */ }
+      } catch (error) {
+        discovery.last = { error: String(error), code: error.cause?.code ?? error.code ?? null };
+      }
       await pause(100);
     }
     throw new Error(`Native Chromium CDP startup timed out: ${stderr}`);
-  } catch (error) { await owner.close(); throw error; }
+  } catch (error) {
+    // Capture the owned process before cleanup, including silent startup
+    // failures. A later fixture has no owner when this function never returned.
+    error.nativeStartup = { pid: child.pid, executablePath: config.executablePath,
+      endpoint, startedAt, elapsedMs: Date.now() - startedAt, exitCode: child.exitCode,
+      signalCode: child.signalCode, stderr, discovery };
+    await owner.close(); throw error;
+  }
 }

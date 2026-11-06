@@ -25,7 +25,10 @@ export async function connectPreparedNativeBrowser(browserType, owner, {
     try {
       await install(installer);
       prepared = await prepareNativePages(owner.endpoint, {
-        ...prepareOptions, beforePageCleanup: disconnectInstaller
+        ...prepareOptions, beforePageCleanup: async readiness => {
+          await prepareOptions?.beforePageCleanup?.(readiness);
+          await disconnectInstaller();
+        }
       });
     } catch (error) {
       // Preserve install/readiness failures and make only one disconnect

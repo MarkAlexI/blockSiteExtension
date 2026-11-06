@@ -110,6 +110,54 @@ test('ordinary UI automation retains Playwright defaults after native localizati
   assert.equal(model.events.at(-1), 'connect 1');
 });
 
+for (const persistent of [false, true]) {
+  test(`native worker prerequisites finish while the install view is still alive (persistent installer: ${persistent})`, async t => {
+    const model = await nativeModel(t);
+    let enter, release;
+    const entered = new Promise(resolve => { enter = resolve; });
+    const released = new Promise(resolve => { release = resolve; });
+    const preparing = connectPreparedNativeBrowser(model.browserType, model.owner, {
+      install: persistent ? async () => {} : undefined,
+      prepareOptions: { waitForInstall: true, installTitle: options.title,
+        async beforePageCleanup(readiness) {
+          enter(readiness);
+          await released;
+          assert.equal(model.targets.has(options.id), true);
+          assert.equal(model.connections.some(client => client.isConnected()), persistent);
+          model.events.push('worker catalog confirmed');
+        } }
+    });
+    try {
+      const readiness = await Promise.race([entered, preparing.then(() => {
+        throw new Error('Native cleanup skipped its worker prerequisite');
+      })]);
+      assert.equal(readiness.installReady.id, options.id);
+      assert.ok(readiness.timeout > 0 && readiness.timeout <= 15000);
+      assert.ok(readiness.targets.some(target => target.id === worker.id));
+      assert.ok(model.requests.every(request => request.url === '/json/list'));
+      assert.equal(model.targets.has(options.id), true);
+    } finally { release(); }
+    await preparing;
+    const confirmed = model.events.indexOf('worker catalog confirmed');
+    assert.ok(confirmed >= 0 && confirmed < model.events.indexOf('create keeper'));
+    if (persistent) assert.ok(confirmed < model.events.indexOf('disconnect 1'));
+  });
+
+  test(`a native worker prerequisite failure aborts before page cleanup (persistent installer: ${persistent})`, async t => {
+    const model = await nativeModel(t);
+    const failure = new Error('Native catalog unavailable before cleanup');
+    await assert.rejects(connectPreparedNativeBrowser(model.browserType, model.owner, {
+      install: persistent ? async () => {} : undefined,
+      prepareOptions: { waitForInstall: true, installTitle: options.title,
+        beforePageCleanup: async () => { throw failure; } }
+    }), error => error === failure);
+    assert.deepEqual([...model.targets.values()], [blank, options, worker]);
+    assert.ok(model.requests.every(request => request.url === '/json/list'));
+    assert.equal(model.connections.length, persistent ? 1 : 0);
+    if (persistent) assert.deepEqual(model.events, ['connect 1', 'disconnect 1']);
+  });
+}
+
 for (const pendingTitle of [null, 'Options page for BlockDistraction']) {
   test(`persistent metadata cannot disconnect the installer before native Options readiness (${pendingTitle})`, async t => {
     const initial = [blank, worker];
@@ -211,7 +259,9 @@ test('native restoration observes original tabs without installation, target mut
   const model = await nativeModel(t, [original, worker]);
   let evidence;
   const browser = await connectPreparedNativeBrowser(model.browserType, model.owner, {
-    prepareOptions: { restoreSession: true }, onPrepared: prepared => { evidence = prepared; }
+    prepareOptions: { restoreSession: true,
+      beforePageCleanup: () => { throw new Error('Session restore must not inspect or warm a worker'); } },
+    onPrepared: prepared => { evidence = prepared; }
   });
   assert.equal(browser, model.connections[0]);
   assert.equal(evidence.preserved, true);

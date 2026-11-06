@@ -14,6 +14,7 @@ import { nativeStorageWrite, nativeWakeAlarms } from './native-activity.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import { waitForPreseedStartup } from './preseed-startup.mjs';
 import { readNativeI18n, requireNativeI18n } from './native-i18n.mjs';
+import { requireWorkerCatalogBeforeCleanup } from './native-worker-catalog.mjs';
 import { readNativeAudioOutput } from './native-audio-output.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -154,12 +155,22 @@ export class ExtensionHarness {
       const persistentInstall = this.testInfo.tags.includes('@native-startup-restore');
       const startupArgs = persistentInstall ? persistentStartupArgs(launchOptions.args) : launchOptions.args;
       const waitForInstall = requiresNativeInstallReadiness({ installed: this.installed, args: startupArgs });
-      this.nativeOwner = await launchNativeChromium({
-        executablePath: launchOptions.executablePath || chromium.executablePath(),
-        profile: this.profile, port, headless: launchOptions.headless,
-        args: startupArgs, env: launchOptions.env,
-        activityLog: this.testInfo.tags.includes('@native-activity-log'), restoreSession
-      });
+      try {
+        this.nativeOwner = await launchNativeChromium({
+          executablePath: launchOptions.executablePath || chromium.executablePath(),
+          profile: this.profile, port, headless: launchOptions.headless,
+          args: startupArgs, env: launchOptions.env,
+          activityLog: this.testInfo.tags.includes('@native-activity-log'), restoreSession
+        });
+      } catch (error) {
+        try {
+          await this.testInfo.attach('native-process-startup-failure', { contentType: 'application/json',
+            body: JSON.stringify(error.nativeStartup ?? { error: String(error) }) });
+        } catch (diagnosticError) {
+          this.testInfo.annotations.push({ type: 'diagnostic', description: String(diagnosticError) });
+        }
+        throw error;
+      }
       let setupStage = 'install, prepare pages and connect';
       try {
         // --lang=en-US falls back to the installed English catalog. The real
@@ -193,7 +204,9 @@ export class ExtensionHarness {
           // download behavior. Only native visibility/lifecycle probes disable
           // those defaults. External process launch is independent of this.
           noDefaults: this.testInfo.tags.includes('@native-visibility'),
-          prepareOptions: { waitForInstall, installTitle, restoreSession },
+          prepareOptions: { waitForInstall, installTitle, restoreSession,
+            beforePageCleanup: readiness => requireWorkerCatalogBeforeCleanup(this.nativeOwner.endpoint,
+              readiness, { testInfo: this.testInfo }) },
           onPrepared: prepared => this.testInfo.attach('native-pages-before-cdp', {
             contentType: 'application/json', body: JSON.stringify(prepared)
           })
