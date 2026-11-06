@@ -7,15 +7,17 @@ import { test as base } from 'playwright/test';
 import { ExtensionHarness } from './fixtures.mjs';
 import { extensionWorker } from './extension-worker.mjs';
 import { startNativeWindowManager } from './native-window-manager.mjs';
-import { readUpgradeBaseline } from './prepare-upgrade-baseline.mjs';
+import { baselineConfigs, readUpgradeBaseline } from './prepare-upgrade-baseline.mjs';
 import { runVersionUpgrade, upgradeUntil, upgradeTimezone } from './version-upgrade.mjs';
 import { runtimePaths } from '../tools/package-store.js';
 import { expectedVersion } from './target-version.mjs';
+import { observeUpgradeFocusAudio } from './upgrade-focus-completion.mjs';
 
-base('native 5.4.14 to current version update preserves paid state, Focus and spent Daily Limit',
+for(const baseline of baselineConfigs) base(`native ${baseline.fromVersion} to current version update preserves paid state, Focus and spent Daily Limit`,
   {tag:['@native-visibility','@native-startup-restore','@native-activity-log']},async({},info)=>{
   assert.equal(info.project.use.headless,false);
-  const previous=await readUpgradeBaseline();
+  const previous=await readUpgradeBaseline(undefined,baseline);
+  const natural=baseline!==baselineConfigs[0];
   const current=path.resolve(process.env.BD_EXTENSION_PATH || fileURLToPath(new URL('..',import.meta.url)));
   const manifest=JSON.parse(await readFile(path.join(current,'manifest.json'),'utf8'));
   assert.equal(manifest.version,expectedVersion);
@@ -24,10 +26,11 @@ base('native 5.4.14 to current version update preserves paid state, Focus and sp
   const e=new ExtensionHarness(path.join(root,'profile'),info,previous.manifest,stable);
   e.upgradeBaseline=previous;
   e.allowNativeUpgradeManager=true;
-  let desktop,watermark=0;
+  let desktop,audio,watermark=0;
   try {
     desktop=await startNativeWindowManager(info.outputPath('desktop'));
     await e.launch({timezone:upgradeTimezone()});
+    if(natural) audio=await observeUpgradeFocusAudio(e);
     const events=()=>{
       const log=e.nativeOwner.activity.snapshot(e.id);assert.deepEqual(log.errors,[]);
       return log.events.filter(v=>v.sequence>watermark&&v.category==='api_event_callback'&&v.api==='runtime.onInstalled')
@@ -38,6 +41,7 @@ base('native 5.4.14 to current version update preserves paid state, Focus and sp
         ...await e.worker.evaluate(()=>({id:chrome.runtime.id,version:chrome.runtime.getManifest().version}))}),
       installObserver:async()=>{watermark=e.nativeOwner.activity.snapshot(e.id).events.at(-1)?.sequence||0;},
       events,
+      readCompletionAudio:()=>audio.read(),
       retainedOptionsState:page=>page.isClosed()?'closed_by_browser':'open',
       reloadRetainedOptions:async page=>{
         if(page.isClosed())return 'closed_by_browser';
@@ -65,10 +69,15 @@ base('native 5.4.14 to current version update preserves paid state, Focus and sp
         assert.equal(selected.identity.id,e.id);
       },
       evidence:value=>info.attach('native-version-upgrade',{body:JSON.stringify(value,null,2),contentType:'application/json'})
-    });
+    },{completion:natural?'alarm':'stop'});
     assert.deepEqual(e.pageErrors,[]);
   } finally {
-    try {await e.close();} finally {await desktop?.close();
-      if(e.browserCleanupComplete)await rm(root,{recursive:true,force:true});}
+    try {
+      if(audio) {await audio.close();await info.attach('upgrade-focus-audio',{
+        body:JSON.stringify(audio.read(),null,2),contentType:'application/json'});}
+    } finally {
+      try {await e.close();} finally {await desktop?.close();
+        if(e.browserCleanupComplete)await rm(root,{recursive:true,force:true});}
+    }
   }
 });

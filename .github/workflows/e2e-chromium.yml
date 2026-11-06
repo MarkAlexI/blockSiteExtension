@@ -54,7 +54,7 @@ jobs:
         working-directory: e2e
         run: npx playwright install --no-shell chromium
       - name: Prepare native audio output
-        if: matrix.group == 'core'
+        if: matrix.group == 'core' || matrix.group == 'upgrade'
         timeout-minutes: 2
         run: |
           sudo apt-get install -y pulseaudio
@@ -73,7 +73,7 @@ jobs:
           with Path(os.environ['GITHUB_ENV']).open('a') as env:
               env.write(f'BD_EXTENSION_PATH={target}\n')
           PY
-      - name: Prepare pinned previous-version runtime
+      - name: Prepare both pinned previous-version runtimes
         if: matrix.group == 'upgrade'
         timeout-minutes: 2
         run: node e2e/prepare-upgrade-baseline.mjs

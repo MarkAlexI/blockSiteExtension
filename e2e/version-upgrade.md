@@ -1,5 +1,37 @@
 # Native version-update preservation — scenario 67
 
+## Upgrade matrix — 5.5.10
+
+Both actual historical packages are pinned in `upgrade-baseline.json`:
+
+| Source | Commit | Focus control after update |
+| --- | --- | --- |
+| 5.4.14 | `4b154dbce16b9c463e9ac5d7d9e9ff9cb2f99e68` | Existing five-minute session and real Popup Stop |
+| 5.5.9 | `873117aec7a604444216cb0e98301fc1e94d5b73` | One-minute session ends at its original native alarm deadline |
+
+The preparation command below builds both packages with their own historical
+packagers and verifies each archive, commit, manifest and extracted runtime.
+Each test owns a separate profile and stable install directory. Source-version
+selection cannot fall back to the other package. The older case remains intact.
+
+The 5.5.9 case opens fresh current Options through the Popup's actual Scheduled
+focus link (`target="_blank"`) before reloading any retained old document. The
+ordinary Options button can reuse an existing tab. The original retained/closed
+branch is recorded in either case. Saved budgets, paid state, alarm deadlines,
+actual rule edits and post-update blocking remain required for both versions.
+
+The recent case preserves sound=true, observes one native completion alarm and
+one released offscreen Web Audio graph with an advancing native audio clock.
+The same observer remains active through the later rule/budget controls to
+reject duplicate playback. CI supplies its existing PulseAudio output backend
+to upgrade as well as core. No synthetic alarm, rewritten deadline, audio warm-up
+or production change is used. The original scenario and job deadlines remain.
+
+These are development-package tests. The new matrix still requires a fresh
+native CI run. Kiwi store delivery, retained-tab behavior, physical speaker
+output and Android completion remain separate manual acceptance. Sections below
+retain the earlier fixture history and its then-current validation counts.
+
 ## Activation candidate — 5.5.10
 
 Fresh current Options must load and receive a real background health reply before
