@@ -9,6 +9,15 @@ const execute = promisify(execFile);
 const dialogName = '^Select the extension directory\\.?$';
 const dialogTitle = /^Select the extension directory\.?$/;
 
+export function temporaryExtensionOptions(source) {
+  // Chromium 151 installs from BOTH switches. Passing the same path through
+  // --disable-extensions-except and --load-extension installs it twice; the
+  // second registration removes the first worker and invalidates its catalog.
+  // The fixture owns an empty profile, so one loader is sufficient. Playwright
+  // must also omit its default --disable-extensions when using that loader.
+  return { args: [`--load-extension=${source}`], ignoreDefaultArgs: ['--disable-extensions'] };
+}
+
 export function persistentStartupArgs(args) {
   // Chromium explicitly skips kCommandLine extensions when loading saved
   // extensions. Both switches load them again, firing a fresh install event.
@@ -132,9 +141,9 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
   }
   await focused();
   evidence.stage = 'accept extension directory';
-  // Activate the verified location entry itself; GTK resolves the typed folder
-  // before it reports the selected directory to Chromium.
-  await command(['key', '--clearmodifiers', 'Return']);
+  // Enter in GTK's location entry navigates into the folder and can leave the
+  // chooser open. The native Open mnemonic accepts the verified selection.
+  await command(['key', '--clearmodifiers', 'alt+o']);
   evidence.stage = 'wait for directory dialog to close';
   for (;;) {
     if (now() >= deadline) throw new Error(`Native extension directory dialog did not close within ${timeout}ms`);

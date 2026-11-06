@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
-import { installNativeStartupExtension, persistentStartupArgs, requiresNativeInstallReadiness } from '../e2e/native-install.mjs';
+import { installNativeStartupExtension, persistentStartupArgs, requiresNativeInstallReadiness, temporaryExtensionOptions } from '../e2e/native-install.mjs';
+import { nativeChromiumArgs } from '../e2e/native-launch.mjs';
 
 const source = '/owned/test-extension with spaces', id = 'a'.repeat(32), version = '5.3.27';
 const pid = 741, dialog = '123', title = 'Select the extension directory';
@@ -64,7 +65,9 @@ function fixture({ installedVersion = version, installedState = 'ENABLED', insta
     if (args[0] === 'getactivewindow') return { stdout: changedFocus && ++activeReads > 1 ? '999' : dialog };
     if (args[0] === 'type') { assert.equal(args[args.indexOf('--delay') + 1], '12'); typed = ++inputBursts <= droppedInputBursts ? args.at(-1).slice(0, -3) : args.at(-1); return { stdout: '' }; }
     if (args[0] === 'key') {
-      if (['Return', 'alt+o'].includes(args.at(-1))) {
+      // In the observed native GTK chooser Enter only changes the directory;
+      // it does not finish selection. Only the explicit Open action accepts.
+      if (args.at(-1) === 'alt+o') {
         if (acceptError) throw acceptError;
         accepted = true;
         assert.equal(typed, source);
@@ -80,6 +83,33 @@ function fixture({ installedVersion = version, installedState = 'ENABLED', insta
 }
 const install = (f, timeout = 15000) => installNativeStartupExtension(f.browser, source, version, timeout, f.desktop);
 const inputCalls = f => f.calls.filter(call => ['type', 'key'].includes(call.args?.[0]));
+
+for (const mode of ['native process', 'Playwright persistent context']) {
+  test(`${mode} installs the fixture exactly once without the global extension-disable default`, () => {
+    const options = temporaryExtensionOptions(source);
+    const args = mode === 'native process' ? nativeChromiumArgs({
+      profile: '/owned/isolated profile', port: 12345, headless: false, args: options.args
+    }) : ['--disable-extensions', '--disable-default-apps']
+      .filter(arg => !options.ignoreDefaultArgs.includes(arg)).concat(options.args);
+    // Both switches are installers in the pinned Chromium, even when their
+    // paths match. Counting unique paths would incorrectly allow a reload.
+    const installing = args.filter(arg => arg.startsWith('--load-extension=') ||
+      arg.startsWith('--disable-extensions-except='));
+    assert.deepEqual(installing, [`--load-extension=${source}`]);
+    assert.equal(args.includes('--disable-extensions'), false);
+    assert.equal(args.includes('--disable-default-apps'), true);
+    assert.equal(requiresNativeInstallReadiness({ installed: true, args }), true);
+  });
+}
+
+test('a permanent native restart removes the single temporary loader without disabling the installed add-on', () => {
+  const options = temporaryExtensionOptions(source);
+  const args = nativeChromiumArgs({ profile: '/owned/profile', port: 12345,
+    headless: false, args: persistentStartupArgs(options.args), restoreSession: true });
+  assert.equal(args.some(arg => /^--(?:load-extension|disable-extensions)(?:=|$)/.test(arg)), false);
+  assert.equal(requiresNativeInstallReadiness({ installed: true, args }), false);
+  assert.equal(args.includes('--restore-last-session'), true);
+});
 
 test('startup launches remove both temporary command-line installation switches and retain native routing', () => {
   const args = ['--load-extension=/owned/test-extension', '--disable-extensions-except=/owned/test-extension',
@@ -119,7 +149,7 @@ test('persistent setup selects the real owned Load unpacked folder dialog withou
     ['key', '--clearmodifiers', 'ctrl+a'],
     ['type', '--clearmodifiers', '--delay', '12', source],
     ['key', '--clearmodifiers', 'ctrl+a'],
-    ['key', '--clearmodifiers', 'Return']
+    ['key', '--clearmodifiers', 'alt+o']
   ]);
 });
 for (const input of [{ windowPid: 999 }, { dialogTitle: 'unrelated dialog' }, { ambiguousDialog: true }]) {
@@ -139,7 +169,7 @@ test('a rejected native Open action is reported without a second install or inpu
   const f = fixture({ acceptError: new Error('native Open rejected') });
   await assert.rejects(install(f), /native Open rejected/);
   assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
-  assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'Return').length, 1);
+  assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'alt+o').length, 1);
 });
 
 for (const pending of [{ droppedInputBursts: 1 }, { missingPrimaryReads: 1 }]) {
@@ -149,9 +179,9 @@ for (const pending of [{ droppedInputBursts: 1 }, { missingPrimaryReads: 1 }]) {
     assert.equal(result.dialog.entryAttempts, 2);
     assert.equal(result.dialog.selectedPath, source + '/', 'readback preserves the spaces in the actual native entry');
     assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
-    assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'Return').length, 1);
+    assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'alt+o').length, 1);
     const confirmation = f.calls.findLastIndex(call => call.file === 'xclip' && call.args.includes('-out'));
-    const acceptance = f.calls.findIndex(call => call.args?.at(-1) === 'Return');
+    const acceptance = f.calls.findIndex(call => call.args?.at(-1) === 'alt+o');
     const metadata = f.calls.findIndex(call => call.method === 'getExtensionsInfo');
     assert.ok(confirmation < acceptance && acceptance < metadata);
   });
@@ -165,7 +195,7 @@ test('an entry that keeps dropping input fails without accepting a wrong folder 
     assert.equal(error.nativeInstallation.dialog.selectedPath, source.slice(0, -3) + '/');
     return true;
   });
-  assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'Return'), false);
+  assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'alt+o'), false);
   assert.equal(f.calls.some(call => call.method === 'getExtensionsInfo'), false);
   assert.equal(f.elapsed, 30, 'the entry deadline does not depend on host CPU scheduling');
 });
@@ -177,7 +207,7 @@ for (const primarySuffix of ['', '/', '///']) {
     assert.equal(result.dialog.entryAttempts, 1);
     assert.equal(result.dialog.selectedPath, source + primarySuffix);
     assert.equal(inputCalls(f).filter(call => call.args[0] === 'type').length, 1);
-    assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'Return').length, 1);
+    assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'alt+o').length, 1);
     assert.equal(f.elapsed, 0);
   });
 }
@@ -186,7 +216,7 @@ for (const primaryText of [source + '-other/', source + '/child/', source + ' ',
   test('a different selected folder never passes directory confirmation ' + JSON.stringify(primaryText), async () => {
     const f = fixture({ primaryText });
     await assert.rejects(install(f, 30), /entry did not confirm the complete path/);
-    assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'Return'), false);
+    assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'alt+o'), false);
     assert.equal(f.calls.some(call => call.method === 'getExtensionsInfo'), false);
     assert.equal(f.elapsed, 30);
   });
@@ -205,7 +235,7 @@ for (const primaryError of [Object.assign(new Error('selection backend failed'),
     const f = fixture({ primaryError });
     await assert.rejects(install(f), error => error === primaryError);
     assert.equal(inputCalls(f).filter(call => call.args[0] === 'type').length, 1);
-    assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'Return'), false);
+    assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'alt+o'), false);
     assert.equal(f.calls.some(call => call.method === 'getExtensionsInfo'), false);
   });
 }
@@ -250,7 +280,7 @@ test('an Open action that leaves the native dialog visible fails before metadata
   });
   assert.equal(f.calls.filter(call => call.method === 'getExtensionsInfo').length, 0);
   assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
-  assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'Return').length, 1);
+  assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'alt+o').length, 1);
 });
 test('a different native dialog after Open cannot be mistaken for successful closure', async () => {
   await assert.rejects(install(fixture({ replacementDialog: true })), /identity changed after Open/);

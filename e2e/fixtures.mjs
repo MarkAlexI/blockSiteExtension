@@ -6,7 +6,7 @@ import { createServer } from 'node:net';
 import { launchNativeChromium, targetsAt } from './native-launch.mjs';
 import { interruptProfileBrowser } from './native-process-interruption.mjs';
 import { connectPreparedNativeBrowser } from './native-connection.mjs';
-import { installNativeStartupExtension, persistentStartupArgs, requiresNativeInstallReadiness } from './native-install.mjs';
+import { installNativeStartupExtension, persistentStartupArgs, requiresNativeInstallReadiness, temporaryExtensionOptions } from './native-install.mjs';
 import { observeNativeIdleWake } from './native-idle.mjs';
 import { observeColdWorker, evaluateColdProducer } from './native-cold-message.mjs';
 import { triggerColdMessages } from './cold-message.mjs';
@@ -122,7 +122,9 @@ export class ExtensionHarness {
     }
     this.timezone = timezone;
     // A unique test profile is mandatory. Never connect to a personal browser.
+    const extensionOptions = temporaryExtensionOptions(this.extensionPath);
     const launchOptions = {
+      ...extensionOptions,
       channel: 'chromium',
       executablePath: process.env.BD_CHROMIUM_BINARY || undefined,
       headless: this.testInfo.project.use.headless !== false,
@@ -130,7 +132,7 @@ export class ExtensionHarness {
       // Process TZ reaches pages and the MV3 worker without a Date/API shim.
       env: timezone ? { ...process.env, TZ: timezone } : undefined,
       viewport: { width: 1280, height: 900 },
-      args: [`--disable-extensions-except=${this.extensionPath}`, `--load-extension=${this.extensionPath}`,
+      args: [...extensionOptions.args,
         ...(this.prefetchFixture ? [
           `--ignore-certificate-errors-spki-list=${this.prefetchFixture.spki}`,
           `--host-resolver-rules=${this.prefetchFixture.hostResolverRules}`, '--no-proxy-server'
