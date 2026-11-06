@@ -1,4 +1,12 @@
-# BlockDistraction Chromium E2E
+# BlockDistraction Chromium E2E **5.5.11**
+
+## Current upgrade target
+
+The upgrade group retains 5.4.14 and targets the actual 5.5.10 → 5.5.11
+transition. It checks saved budgets, fresh Options before any retained-tab
+reload, and natural Focus completion with one native sound. The 5.5.10
+base passed Linux and both macOS smoke jobs; 5.5.11 requires a fresh CI run.
+See [the current matrix and acceptance limits](version-upgrade.md).
 
 ## macOS smoke CI
 

@@ -1,11 +1,11 @@
 # Chromium E2E groups
 
-## Current upgrade matrix — 5.5.10
+## Current upgrade matrix — 5.5.11
 
 Inventory: **74 = 58 core + 13 lifecycle + 1 overdue + 2 upgrade**.
-The upgrade job prepares both pinned source packages, 5.4.14 and 5.5.9, and runs
+The upgrade job prepares both pinned source packages, 5.4.14 and 5.5.10, and runs
 the same-profile native update case once per version. Its native audio backend
-also observes natural Focus completion after the 5.5.9 update. Both macOS smoke
+also observes natural Focus completion after the 5.5.10 update. Both macOS smoke
 sets remain 24 scenarios each; serial execution, zero retries, test deadlines,
 job limits and the required `e2e` gate are unchanged. See the
 [current matrix and native acceptance limits](version-upgrade.md).

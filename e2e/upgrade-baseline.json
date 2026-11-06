@@ -9,8 +9,8 @@
 },
 {
   "repository": "MarkAlexI/blockSiteExtension",
-  "commit": "873117aec7a604444216cb0e98301fc1e94d5b73",
-  "fromVersion": "5.5.9",
+  "commit": "7a5b8fa0ca0f5685afe8bf90a679c6f659dd7f18",
+  "fromVersion": "5.5.10",
   "packageTool": "tools/package-store.js",
   "packageArgs": ["chrome"],
   "archiveSuffix": "-cws.zip"
