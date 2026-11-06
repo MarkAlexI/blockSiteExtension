@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { expectedVersion } from './target-version.mjs';
 import { frameFixtureHtml } from './frame-fixture.mjs';
 import { cleanupDeadline, closeNativeResources } from './bounded-cleanup.mjs';
+import { startNoVarySearchFixture } from './no-vary-search-fixture.mjs';
 import { readProPanelReadiness } from './pro-panel-readiness.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +131,10 @@ export class ExtensionHarness {
       env: timezone ? { ...process.env, TZ: timezone } : undefined,
       viewport: { width: 1280, height: 900 },
       args: [`--disable-extensions-except=${this.extensionPath}`, `--load-extension=${this.extensionPath}`,
+        ...(this.prefetchFixture ? [
+          `--ignore-certificate-errors-spki-list=${this.prefetchFixture.spki}`,
+          '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1', '--no-proxy-server'
+        ] : []),
         // Restored pages and startup alarms run before Playwright routes exist.
         // This dedicated scenario cannot contact the production license host.
         ...(this.testInfo.tags.includes('@native-startup-restore') ?
@@ -245,6 +250,9 @@ export class ExtensionHarness {
       snapshots: !this.testInfo.tags.includes('@native-no-activation'), sources: true };
     await this.context.tracing.start(this.traceOptions);
     this.traceStarted = true;
+    // Even a route.continue() handler disables HTTP caching. Native prefetch
+    // tests use real loopback TLS; launch DNS rules prevent production access.
+    if (this.prefetchFixture) return;
     await this.context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
@@ -735,12 +743,18 @@ export class ExtensionHarness {
 
 export const test = base.extend({
   initialTimezone: [undefined, { option: true }],
-  extension: async ({ initialTimezone }, use, testInfo) => {
+  nativePrefetchServer: async ({}, use, testInfo) => {
+    if (!testInfo.tags.includes('@native-prefetch')) return use(null);
+    const fixture = await startNoVarySearchFixture();
+    try { await use(fixture); } finally { await fixture.close(); }
+  },
+  extension: async ({ initialTimezone, nativePrefetchServer }, use, testInfo) => {
     const manifest = JSON.parse(await readFile(path.join(extensionPath, 'manifest.json'), 'utf8'));
     expect(manifest.version, 'The test target version must match BD_EXPECTED_VERSION').toBe(expectedVersion);
     expect(manifest.background.service_worker).toBe('scripts/service_worker.js');
     const profile = await mkdtemp(path.join(tmpdir(), 'bd-e2e-'));
     const harness = new ExtensionHarness(profile, testInfo, manifest);
+    harness.prefetchFixture = nativePrefetchServer;
     try {
       try { await harness.launch({ timezone: initialTimezone }); }
       catch (error) {

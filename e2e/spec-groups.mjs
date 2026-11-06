@@ -20,6 +20,8 @@ export const testFiles = Object.freeze([
   'multi-window-native.spec.mjs',
   'session-restore-native.spec.mjs',
   'frames-native.spec.mjs',
+  'no-vary-search.spec.mjs',
+  'popup-tab-target.spec.mjs',
   'pro-feedback.spec.mjs',
   'startup-restore-native.spec.mjs',
   'overdue.spec.mjs',

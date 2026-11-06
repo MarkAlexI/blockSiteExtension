@@ -71,3 +71,19 @@ test('cancellation after discovery cleans a sound page left by the previous work
   assert.equal((await f.service.play('focus-complete', 'focus:1', () => false)).success, false);
   assert.deepEqual(f.calls.map(c => c[0]), ['close']);
 });
+
+for (const owned of [false, true]) test(`embedded/tab/popup contexts cannot impersonate ${owned ? 'an existing' : 'a missing'} sound document`, async () => {
+  const f = fixture();
+  const soundUrl = `chrome-extension://own/${OFFSCREEN_SOUND_PATH}`;
+  const contexts = [
+    ...['TAB', 'POPUP', 'EMBEDDED'].map(contextType => ({ contextType, documentUrl: soundUrl })),
+    { contextType: 'TAB', documentUrl: 'chrome-extension://own/options/options.html' },
+    ...(owned ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: soundUrl }] : [])
+  ];
+  // Model the documented native filter, including a future context type and a
+  // manually opened tab with exactly the sound URL. No production API shim.
+  f.api.runtime.getContexts = async filter => contexts.filter(context =>
+    !filter.contextTypes || filter.contextTypes.includes(context.contextType));
+  assert.equal((await f.service.play('focus-complete', `contexts:${owned}`)).success, true);
+  assert.deepEqual(f.calls.map(call => call[0]), owned ? ['send', 'close'] : ['create', 'send', 'close']);
+});
