@@ -22,10 +22,10 @@ export function requiresNativeInstallReadiness({ installed, args }) {
   return !installed || args.some(arg => arg.startsWith('--load-extension='));
 }
 
-async function waitForNativeInstallation(page, source, version, timeout, deadline, evidence) {
+async function waitForNativeInstallation(page, source, version, timeout, deadline, evidence, { now, sleep }) {
   const expired = () => new Error(`native installed identity did not match within ${timeout}ms`);
   for (;;) {
-    const remaining = deadline - Date.now();
+    const remaining = deadline - now();
     if (remaining <= 0) throw expired();
     let timer;
     let installed;
@@ -43,19 +43,22 @@ async function waitForNativeInstallation(page, source, version, timeout, deadlin
       installed = records.find(item => item.path === source && item.version === version &&
         item.location === 'UNPACKED' && item.state === 'ENABLED') || null;
     } finally { clearTimeout(timer); }
-    if (Date.now() >= deadline) throw expired();
+    if (now() >= deadline) throw expired();
     if (installed) return installed;
     // onInstalled can foreground Options. Timer polling still reads the real
     // background WebUI, with the original deadline and no visibility shim.
-    await delay(Math.min(100, deadline - Date.now()));
+    await sleep(Math.min(100, deadline - now()));
   }
 }
 
 async function selectNativeDirectory(source, timeout, deadline, desktop, evidence) {
-  const { browserPid, env, run } = desktop;
+  const { browserPid, env, run, now, sleep } = desktop;
   const command = async (args) => {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new Error(`Native extension directory dialog did not appear within ${timeout}ms`);
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      const reason = evidence.dialog ? `setup expired during ${evidence.stage}` : 'dialog did not appear';
+      throw new Error(`Native extension directory ${reason} within ${timeout}ms`);
+    }
     return run('xdotool', args, { timeout: Math.min(3000, remaining), env });
   };
   let window;
@@ -72,7 +75,7 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
       throw new Error('Native extension directory dialog identity is ambiguous');
     }
     window = matches[0];
-    if (!window) await delay(Math.max(0, Math.min(100, deadline - Date.now())));
+    if (!window) await sleep(Math.max(0, Math.min(100, deadline - now())));
   }
   const owned = async () => {
     if ((await command(['getwindowpid', window])).stdout.trim() !== String(browserPid)) {
@@ -100,7 +103,7 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
   await focused();
   await command(['key', '--clearmodifiers', 'ctrl+l']);
   for (;;) {
-    if (Date.now() >= deadline) throw new Error(`Native extension directory entry did not confirm the complete path within ${timeout}ms`);
+    if (now() >= deadline) throw new Error(`Native extension directory entry did not confirm the complete path within ${timeout}ms`);
     await focused();
     evidence.stage = 'confirm directory entry';
     evidence.dialog.entryAttempts++;
@@ -110,7 +113,7 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
     await focused();
     let selectedPath = null;
     try {
-      const remaining = deadline - Date.now();
+      const remaining = deadline - now();
       if (remaining <= 0) throw new Error('Native extension directory entry exhausted its setup deadline');
       selectedPath = (await run('xclip', ['-selection', 'primary', '-out'],
         { timeout: Math.min(1000, remaining), env })).stdout;
@@ -121,8 +124,11 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
           !/target .* not available/i.test(error.stderr || error.message)) throw error;
     }
     evidence.dialog.selectedPath = selectedPath;
-    if (selectedPath === source) break;
-    await delay(Math.max(0, Math.min(100, deadline - Date.now())));
+    // GTK completes a directory entry with a trailing slash. Preserve the raw
+    // readback for diagnosis, but compare only that harmless suffix; prefixes,
+    // neighboring folders, whitespace and partial paths must still be rejected.
+    if (typeof selectedPath === 'string' && selectedPath.replace(/\/+$/, '') === source.replace(/\/+$/, '')) break;
+    await sleep(Math.max(0, Math.min(100, deadline - now())));
   }
   await focused();
   evidence.stage = 'accept extension directory';
@@ -131,7 +137,7 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
   await command(['key', '--clearmodifiers', 'Return']);
   evidence.stage = 'wait for directory dialog to close';
   for (;;) {
-    if (Date.now() >= deadline) throw new Error(`Native extension directory dialog did not close within ${timeout}ms`);
+    if (now() >= deadline) throw new Error(`Native extension directory dialog did not close within ${timeout}ms`);
     let visible;
     try {
       visible = (await command(['search', '--onlyvisible', '--all', '--pid', String(browserPid), '--name', dialogName]))
@@ -145,7 +151,7 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
       evidence.dialog.closed = true;
       return evidence.dialog;
     }
-    await delay(Math.max(0, Math.min(100, deadline - Date.now())));
+    await sleep(Math.max(0, Math.min(100, deadline - now())));
   }
 }
 
@@ -154,7 +160,8 @@ async function selectNativeDirectory(source, timeout, deadline, desktop, evidenc
 // Protocol drag supplies renderer data, but not WebContents::GetDropData().
 // Temporary CLI/CDP installs, profile edits and runtime intents cannot replace it.
 export async function installNativeStartupExtension(browser, source, version, timeout = 15000,
-  { browserPid, platform = process.platform, env = process.env, run = execute } = {}) {
+  { browserPid, platform = process.platform, env = process.env, run = execute,
+    now = Date.now, sleep = delay } = {}) {
   assert.ok(typeof source === 'string' && path.isAbsolute(source) && !/[\u0000-\u001f\u007f]/.test(source),
     'native installation needs an absolute local extension path without control characters');
   assert.ok(Number.isSafeInteger(browserPid) && browserPid > 0, 'native installation needs an owned Chromium process');
@@ -168,19 +175,19 @@ export async function installNativeStartupExtension(browser, source, version, ti
   await toggle.waitFor({ state: 'visible', timeout });
   if (!await toggle.evaluate(element => element.checked)) await toggle.click();
   assert.equal(await toggle.evaluate(element => element.checked), true, 'native developer mode enabled');
-  const deadline = Date.now() + timeout;
+  const deadline = now() + timeout;
   const evidence = { source, expectedVersion: version, timeoutMs: timeout, stage: 'open Load unpacked', metadata: [] };
   try {
     await page.locator('extensions-toolbar #loadUnpacked').click({ timeout });
     evidence.stage = 'find directory dialog';
-    const dialog = await selectNativeDirectory(source, timeout, deadline, { browserPid, env, run }, evidence);
+    const dialog = await selectNativeDirectory(source, timeout, deadline, { browserPid, env, run, now, sleep }, evidence);
     evidence.stage = 'verify installed identity';
-    const installed = await waitForNativeInstallation(page, source, version, timeout, deadline, evidence);
+    const installed = await waitForNativeInstallation(page, source, version, timeout, deadline, evidence, { now, sleep });
     assert.match(installed.id, /^[a-p]{32}$/);
     return { method: 'chrome://extensions native Load unpacked dialog', id: installed.id,
       path: installed.path, version: installed.version, location: installed.location, state: installed.state, dialog };
   } catch (error) {
-    error.nativeInstallation = { ...evidence, elapsedMs: timeout - Math.max(0, deadline - Date.now()) };
+    error.nativeInstallation = { ...evidence, elapsedMs: timeout - Math.max(0, deadline - now()) };
     throw error;
   }
 }

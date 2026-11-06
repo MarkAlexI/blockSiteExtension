@@ -4,13 +4,13 @@ import { prepareNativePages } from './native-launch.mjs';
 // Observe its localized Options page while the installer is still connected,
 // then disconnect before HTTP cleanup and attach a fresh scenario client.
 export async function connectPreparedNativeBrowser(browserType, owner, {
-  install, prepareOptions, onPrepared
+  install, prepareOptions, onPrepared, noDefaults = true
 } = {}) {
   if (install && prepareOptions?.restoreSession) {
     throw new Error('Session restoration must not install or clear native pages');
   }
   const connect = () => browserType.connectOverCDP(owner.webSocketDebuggerUrl, {
-    noDefaults: true, isLocal: true
+    noDefaults, isLocal: true
   });
   let prepared;
   if (install) {

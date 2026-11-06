@@ -187,6 +187,10 @@ export class ExtensionHarness {
             });
             setupStage = 'wait for localized install view before installer disconnect';
           } : undefined,
+          // Standard UI scenarios keep Playwright's normal focus, input and
+          // download behavior. Only native visibility/lifecycle probes disable
+          // those defaults. External process launch is independent of this.
+          noDefaults: this.testInfo.tags.includes('@native-visibility'),
           prepareOptions: { waitForInstall, installTitle, restoreSession },
           onPrepared: prepared => this.testInfo.attach('native-pages-before-cdp', {
             contentType: 'application/json', body: JSON.stringify(prepared)

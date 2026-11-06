@@ -8,7 +8,7 @@ const blank = { id: 'blank', type: 'page', url: 'about:blank' };
 const options = { id: 'options', type: 'page', url: 'chrome-extension://test/options/options.html', title: 'Site Blocker' };
 const worker = { id: 'worker', type: 'service_worker', url: 'chrome-extension://test/scripts/service_worker.js' };
 
-async function nativeModel(t, initial = [blank, options, worker]) {
+async function nativeModel(t, initial = [blank, options, worker], { noDefaults = true } = {}) {
   const targets = new Map(initial.map(target => [target.id, target]));
   const connections = [], requests = [], events = [], observations = [];
   let reads = 0, resolvePolled;
@@ -55,7 +55,7 @@ async function nativeModel(t, initial = [blank, options, worker]) {
     webSocketDebuggerUrl: 'ws://127.0.0.1/devtools/browser/owned-process' };
   const browserType = { async connectOverCDP(url, config) {
     assert.equal(url, owner.webSocketDebuggerUrl, 'all clients attach to the same owned process');
-    assert.deepEqual(config, { noDefaults: true, isLocal: true });
+    assert.deepEqual(config, { noDefaults, isLocal: true });
     const number = connections.length + 1;
     let connected = true;
     const browser = { isConnected: () => connected, async close() {
@@ -90,6 +90,24 @@ test('persistent installation observes localized readiness before disconnect, th
   assert.deepEqual(model.events, ['connect 1', 'install complete', 'disconnect 1', 'create keeper',
     'close target blank', 'close target options', 'prepared evidence', 'connect 2']);
   assert.deepEqual([...model.targets.values()], [worker, { ...blank, id: 'keeper' }]);
+});
+
+test('ordinary UI automation retains Playwright defaults after native localization and page cleanup', async t => {
+  const loading = { ...options, title: 'Options page for BlockDistraction' };
+  const model = await nativeModel(t, [blank, worker, loading], { noDefaults: false });
+  const preparing = connectPreparedNativeBrowser(model.browserType, model.owner, {
+    noDefaults: false,
+    prepareOptions: { waitForInstall: true, installTitle: options.title, timeout: 2000 }
+  });
+  await model.polled;
+  assert.equal(model.connections.length, 0, 'normal UI defaults do not attach CDP before the native catalog is ready');
+  assert.ok(model.requests.every(request => request.url === '/json/list'));
+  model.targets.set(options.id, options);
+  const browser = await preparing;
+  assert.equal(browser, model.connections[0]);
+  assert.equal(model.observations.every(observation => !observation.connected), true);
+  assert.deepEqual([...model.targets.values()], [worker, { ...blank, id: 'keeper' }]);
+  assert.equal(model.events.at(-1), 'connect 1');
 });
 
 for (const pendingTitle of [null, 'Options page for BlockDistraction']) {

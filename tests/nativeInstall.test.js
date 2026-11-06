@@ -8,8 +8,9 @@ const pid = 741, dialog = '123', title = 'Select the extension directory';
 function fixture({ installedVersion = version, installedState = 'ENABLED', installAfterReads = 0,
   stalledRead = false, missingDialog = false, remainsOpen = false, replacementDialog = false, windowPid = pid, changedFocus = false,
   dialogTitle = title, ambiguousDialog = false, xtest = true, acceptError = null, searchError = null,
-  droppedInputBursts = 0, missingPrimaryReads = 0, primaryError = null, xclipMissing = false } = {}) {
+  droppedInputBursts = 0, missingPrimaryReads = 0, primaryError = null, xclipMissing = false, primarySuffix = '/', primaryText = null } = {}) {
   const calls = [], toggle = { checked: false }, records = [];
+  let elapsed = 0;
   let reads = 0, dialogOpened = false, accepted = false, typed = null, activeReads = 0, inputBursts = 0, primaryReads = 0;
   const sandbox = { chrome: { developerPrivate: { getExtensionsInfo: async () => {
     reads++; calls.push({ method: 'getExtensionsInfo' });
@@ -43,7 +44,7 @@ function fixture({ installedVersion = version, installedState = 'ENABLED', insta
       assert.deepEqual(args, ['-selection', 'primary', '-out']);
       if (primaryError) throw primaryError;
       if (++primaryReads <= missingPrimaryReads) throw Object.assign(new Error('target STRING not available'), { code: 1 });
-      return { stdout: typed };
+      return { stdout: primaryText ?? (typed + primarySuffix) };
     }
     assert.equal(file, 'xdotool');
     if (args[0] === 'version') return { stdout: 'xdotool version fixture' };
@@ -74,7 +75,8 @@ function fixture({ installedVersion = version, installedState = 'ENABLED', insta
     throw new Error('Unexpected desktop command');
   };
   return { browser: { contexts: () => [context] }, calls, toggle,
-    desktop: { browserPid: pid, platform: 'linux', env: { DISPLAY: ':45' }, run } };
+    desktop: { browserPid: pid, platform: 'linux', env: { DISPLAY: ':45' }, run,
+      now: () => elapsed, sleep: async ms => { elapsed += ms; } }, get elapsed() { return elapsed; } };
 }
 const install = (f, timeout = 15000) => installNativeStartupExtension(f.browser, source, version, timeout, f.desktop);
 const inputCalls = f => f.calls.filter(call => ['type', 'key'].includes(call.args?.[0]));
@@ -108,7 +110,7 @@ test('persistent setup selects the real owned Load unpacked folder dialog withou
   assert.equal(result.version, version); assert.equal(result.location, 'UNPACKED'); assert.equal(result.state, 'ENABLED');
   assert.equal(result.method, 'chrome://extensions native Load unpacked dialog');
   assert.deepEqual(result.dialog, { window: dialog, title, pid, delivery: 'XTEST', typeDelayMs: 12,
-    entryAttempts: 1, selectedPath: source, closed: true });
+    entryAttempts: 1, selectedPath: source + '/', closed: true });
   assert.equal(f.toggle.checked, true);
   assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
   assert.equal(f.calls.some(call => call.method === 'newCDPSession'), false);
@@ -145,7 +147,7 @@ for (const pending of [{ droppedInputBursts: 1 }, { missingPrimaryReads: 1 }]) {
     const f = fixture(pending);
     const result = await install(f, 2000);
     assert.equal(result.dialog.entryAttempts, 2);
-    assert.equal(result.dialog.selectedPath, source, 'readback preserves the spaces in the actual native entry');
+    assert.equal(result.dialog.selectedPath, source + '/', 'readback preserves the spaces in the actual native entry');
     assert.equal(f.calls.filter(call => call.method === 'loadUnpackedClick').length, 1);
     assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'Return').length, 1);
     const confirmation = f.calls.findLastIndex(call => call.file === 'xclip' && call.args.includes('-out'));
@@ -160,12 +162,35 @@ test('an entry that keeps dropping input fails without accepting a wrong folder 
   await assert.rejects(install(f, 30), error => {
     assert.match(error.message, /entry did not confirm the complete path/);
     assert.equal(error.nativeInstallation.stage, 'confirm directory entry');
-    assert.equal(error.nativeInstallation.dialog.selectedPath, source.slice(0, -3));
+    assert.equal(error.nativeInstallation.dialog.selectedPath, source.slice(0, -3) + '/');
     return true;
   });
   assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'Return'), false);
   assert.equal(f.calls.some(call => call.method === 'getExtensionsInfo'), false);
+  assert.equal(f.elapsed, 30, 'the entry deadline does not depend on host CPU scheduling');
 });
+
+for (const primarySuffix of ['', '/', '///']) {
+  test('GTK directory completion accepts only harmless trailing separators ' + JSON.stringify(primarySuffix), async () => {
+    const f = fixture({ primarySuffix });
+    const result = await install(f);
+    assert.equal(result.dialog.entryAttempts, 1);
+    assert.equal(result.dialog.selectedPath, source + primarySuffix);
+    assert.equal(inputCalls(f).filter(call => call.args[0] === 'type').length, 1);
+    assert.equal(inputCalls(f).filter(call => call.args.at(-1) === 'Return').length, 1);
+    assert.equal(f.elapsed, 0);
+  });
+}
+
+for (const primaryText of [source + '-other/', source + '/child/', source + ' ', source.slice(0, -1) + '/']) {
+  test('a different selected folder never passes directory confirmation ' + JSON.stringify(primaryText), async () => {
+    const f = fixture({ primaryText });
+    await assert.rejects(install(f, 30), /entry did not confirm the complete path/);
+    assert.equal(inputCalls(f).some(call => call.args.at(-1) === 'Return'), false);
+    assert.equal(f.calls.some(call => call.method === 'getExtensionsInfo'), false);
+    assert.equal(f.elapsed, 30);
+  });
+}
 
 test('a missing selection reader fails before opening the browser installer', async () => {
   const f = fixture({ xclipMissing: true });
