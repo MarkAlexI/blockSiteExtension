@@ -17,7 +17,8 @@ export async function targetsAt(endpoint, { timeout = 1000 } = {}) {
 // restored pages before connectOverCDP: a page with an unresponsive renderer
 // must not block Playwright's page initialization. Keep one fresh blank tab.
 export async function prepareNativePages(endpoint, {
-  waitForInstall = false, installTitle, timeout = 15_000, restoreSession = false, beforePageCleanup,
+  waitForInstall = false, installTitle, timeout = 15_000, restoreSession = false,
+  beforeInstallReady, beforePageCleanup,
   now = Date.now, sleep = pause, discoverTargets = targetsAt
 } = {}) {
   // A startup-restore scenario must observe Chrome's original restored tabs.
@@ -58,14 +59,28 @@ export async function prepareNativePages(endpoint, {
   };
   let targets = await readTargets();
   let installReady = null;
+  if (waitForInstall && beforeInstallReady) {
+    // A restored Options title is not a worker readiness signal. Observe the
+    // already exposed worker before waiting for the new onInstalled view.
+    while (!targets.some(target => target.type === 'service_worker' &&
+      /^chrome-extension:\/\/[^/]+\/scripts\/service_worker\.js$/.test(target.url))) {
+      if (now() >= deadline) throw new Error('Native Chromium install worker not observed before the setup deadline');
+      await sleep(Math.min(100, Math.max(0, deadline - now())));
+      targets = await readTargets();
+    }
+    await beforeInstallReady({ targets, waitForInstall, timeout: Math.max(1, deadline - now()) });
+    targets = await readTargets();
+  }
   while (waitForInstall) {
-    const target = targets.find(isInstallPage);
+    const pages = targets.filter(isInstallPage);
+    const untranslated = pages.find(page => page.title === 'header');
+    if (untranslated) {
+      throw new Error(`Native Chromium install localization failed before page cleanup: ${JSON.stringify(untranslated)}`);
+    }
+    const target = pages.find(page => page.title === installTitle) || pages[0];
     if (target?.title === installTitle) {
       installReady = { id: target.id, title: target.title, expectedTitle: installTitle };
       break;
-    }
-    if (target?.title === 'header') {
-      throw new Error(`Native Chromium install localization failed before page cleanup: ${JSON.stringify(target)}`);
     }
     if (now() >= deadline) {
       const reason = target ? 'install localization not completed' : 'install page not observed';

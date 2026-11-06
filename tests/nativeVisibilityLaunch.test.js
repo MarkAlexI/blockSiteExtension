@@ -155,6 +155,26 @@ test('a CLI-loaded native restart keeps its new install view until localization 
   assert.deepEqual(result.remainingTargets, [worker, keeper]);
 });
 
+test('a ready install view is selected even when an earlier restored Options is still loading', async t => {
+  const stale = { ...options, id: 'restored-options', title: 'Options page for BlockDistraction' };
+  const api = await devtools(t, [blank, stale, worker, options]);
+  let elapsed = 0;
+  const result = await prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 200,
+    now: () => elapsed, sleep: async ms => { elapsed += ms; }, discoverTargets: api.discoverTargets });
+  assert.equal(result.installReady.id, options.id);
+  assert.deepEqual(result.remainingTargets, [worker, keeper]);
+  assert.equal(elapsed, 0, 'a ready view does not wait behind the restored renderer');
+});
+
+test('a localized Options cannot hide another Options with a failed native translation', async t => {
+  const failed = { ...options, id: 'untranslated-options', title: 'header' };
+  const api = await devtools(t, [blank, options, worker, failed]);
+  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle }),
+    /install localization failed before page cleanup/);
+  assert.deepEqual([...api.targets.values()], [blank, options, worker, failed]);
+  assert.ok(api.requests.every(request => request.url === '/json/list'));
+});
+
 test('a CLI-loaded restart with empty native localization fails before hiding its install page', async t => {
   const untranslated = { ...options, title: 'header' };
   const api = await devtools(t, [blank, worker, untranslated]);

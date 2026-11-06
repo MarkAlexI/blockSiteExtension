@@ -8,8 +8,9 @@ const origin = `chrome-extension://${id}`;
 const messages = { header: 'Site Blocker', deletebtn: 'Delete', blockingmode_header: 'Blocking',
   daily_limit_usage: '7 / 10 min', '@@extension_id': id, '@@ui_locale': 'en', '@@bidi_dir': 'ltr' };
 
-function fixture({ catalog = messages, mode = 'reply' } = {}) {
+function fixture({ catalog = messages, mode = 'reply', loadedBeforeAttach = false, isolatedContext = false } = {}) {
   const events = [], commands = [], calls = [], attachments = [];
+  let moduleLoaded = loadedBeforeAttach;
   const globals = { location: { href: `${origin}/scripts/service_worker.js` }, chrome: {
     runtime: { id, getManifest: () => ({ default_locale: 'en' }) },
     i18n: { getUILanguage: () => 'en-US', getMessage(key) { calls.push(key); return catalog[key] ?? ''; } }
@@ -17,15 +18,51 @@ function fixture({ catalog = messages, mode = 'reply' } = {}) {
   class Socket extends EventTarget {
     constructor(url) {
       super(); this.closed = false; events.push(['connect', url]);
-      queueMicrotask(() => this.dispatchEvent(new Event('open')));
+      queueMicrotask(() => {
+        this.dispatchEvent(new Event('open'));
+        if (loadedBeforeAttach) this.packet({ method: 'Inspector.workerScriptLoaded' });
+      });
     }
+    packet(packet) { this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(packet) })); }
     send(text) {
       const command = JSON.parse(text); commands.push(command);
-      if (mode === 'hang') return;
+      if (command.method === 'Runtime.enable') {
+        queueMicrotask(() => {
+          if (mode === 'protocol-error') { this.packet({ id: command.id, error: { message: 'Runtime unavailable' } }); return; }
+          if (isolatedContext) this.packet({ method: 'Runtime.executionContextCreated',
+            params: { context: { id: 99, auxData: { isDefault: false } } } });
+          this.packet({ method: 'Runtime.executionContextCreated', params: { context: {
+            id: 23, uniqueId: 'owned-context', origin, auxData: { isDefault: true } } } });
+          this.packet({ id: command.id, result: {} });
+        });
+        return;
+      }
+      if (command.method === 'Runtime.runIfWaitingForDebugger') {
+        queueMicrotask(() => {
+          this.packet({ id: command.id, result: {} });
+          if (mode === 'context-destroyed') {
+            this.packet({ method: 'Runtime.executionContextDestroyed', params: { executionContextId: 23 } }); return;
+          }
+          if (mode === 'hang') return;
+          moduleLoaded = true;
+          this.packet({ method: 'Inspector.workerScriptLoaded' });
+        });
+        return;
+      }
+      assert.equal(command.method, 'Runtime.evaluate');
+      if (mode === 'evaluation-hang') return;
       if (mode === 'close') { this.close(); return; }
       if (mode === 'error') { this.dispatchEvent(new Event('error')); return; }
-      const packet = mode === 'exception' ? { id: 1, result: { exceptionDetails: { text: 'binding unavailable' } } } :
-        { id: 1, result: { result: { value: runInNewContext(command.params.expression, globals) } } };
+      let result;
+      try {
+        // This is the observed restart interleaving: a V8 context exists before
+        // the worker module installs its native runtime bindings. An untargeted
+        // evaluation can also run outside the extension's default context.
+        const scope = moduleLoaded && command.params.contextId === 23 ? globals : { chrome: {} };
+        if (mode === 'exception') throw new Error('binding unavailable');
+        result = { result: { value: runInNewContext(command.params.expression, scope) } };
+      } catch (error) { result = { exceptionDetails: { text: String(error) } }; }
+      const packet = { id: command.id, result };
       queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', {
         data: mode === 'invalid-json' ? '{' : JSON.stringify(packet)
       })));
@@ -35,7 +72,8 @@ function fixture({ catalog = messages, mode = 'reply' } = {}) {
       queueMicrotask(() => { events.push(['disconnected']); this.dispatchEvent(new Event('close')); });
     }
   }
-  const readiness = { installReady: { id: 'options' }, timeout: mode === 'hang' ? 10 : 1000,
+  const readiness = { waitForInstall: true, installReady: { id: 'options' },
+    timeout: ['hang', 'evaluation-hang'].includes(mode) ? 20 : 1000,
     targets: [{ id: 'options', type: 'page', url: `${origin}/options/options.html` },
       { id: 'worker', type: 'service_worker', url: `${origin}/scripts/service_worker.js`,
         webSocketDebuggerUrl: 'ws://127.0.0.1:12345/devtools/page/worker' }] };
@@ -48,21 +86,41 @@ function fixture({ catalog = messages, mode = 'reply' } = {}) {
 const observe = f => requireWorkerCatalogBeforeCleanup(endpoint, f.readiness,
   { Socket: f.Socket, testInfo: f.testInfo });
 
-test('the already running worker supplies its real bindings before cleanup and detaches completely', async () => {
+test('native catalog waits for module evaluation and targets its real context before cleanup', async () => {
   const f = fixture();
   const snapshot = await observe(f);
   assert.equal(snapshot.predefinedMessages['@@extension_id'], id);
   assert.equal(snapshot.messages.daily_limit_usage, '7 / 10 min');
-  assert.deepEqual(f.commands.map(command => command.method), ['Runtime.evaluate']);
+  assert.deepEqual(f.commands.map(command => command.method),
+    ['Runtime.enable', 'Runtime.runIfWaitingForDebugger', 'Runtime.evaluate']);
+  assert.equal(f.commands.at(-1).params.contextId, 23);
   assert.deepEqual(f.calls, Object.keys(messages));
   assert.equal(f.attachments[0].label, 'native-worker-i18n-before-cleanup');
   assert.equal(f.events.at(-1)[0], 'disconnected');
 });
 
 test('an existing-profile restart without an install view performs no worker API call', async () => {
-  const f = fixture(); f.readiness.installReady = null;
+  const f = fixture(); f.readiness.installReady = null; f.readiness.waitForInstall = false;
   assert.equal(await observe(f), null);
   assert.deepEqual(f.events, []);
+});
+
+test('worker readiness does not depend on a restored or newly created Options title', async () => {
+  const f = fixture(); f.readiness.installReady = null; f.readiness.targets.shift();
+  assert.equal((await observe(f)).id, id);
+  assert.deepEqual(f.calls, Object.keys(messages));
+});
+
+test('a script-loaded event replayed before the runtime context is also accepted', async () => {
+  const f = fixture({ loadedBeforeAttach: true });
+  assert.equal((await observe(f)).id, id);
+  assert.equal(f.commands.filter(command => command.method === 'Runtime.evaluate').length, 1);
+});
+
+test('unrelated isolated contexts cannot receive the native extension catalog evaluation', async () => {
+  const f = fixture({ isolatedContext: true });
+  assert.equal((await observe(f)).id, id);
+  assert.equal(f.commands.at(-1).params.contextId, 23);
 });
 
 test('an empty native bundle fails before cleanup with its unmodified diagnostic snapshot', async () => {
@@ -77,7 +135,7 @@ for (const count of [0, 2]) {
   test(`missing or duplicate workers cannot pass native catalog readiness (${count})`, async () => {
     const f = fixture(), worker = f.readiness.targets[1];
     f.readiness.targets = [f.readiness.targets[0], ...Array(count).fill(worker)];
-    await assert.rejects(observe(f), /one already running worker/);
+    await assert.rejects(observe(f), /one already exposed extension worker/);
     assert.deepEqual(f.events, []);
   });
 }
@@ -91,11 +149,21 @@ for (const url of ['ws://127.0.0.1:9999/devtools/page/worker',
   });
 }
 
-for (const mode of ['exception', 'invalid-json', 'close', 'error', 'hang']) {
+for (const mode of ['exception', 'invalid-json', 'close', 'error', 'protocol-error', 'context-destroyed', 'hang', 'evaluation-hang']) {
   test('native catalog observation preserves transport failure without retry: ' + mode, async () => {
     const f = fixture({ mode });
-    await assert.rejects(observe(f));
-    assert.equal(f.commands.length, 1);
+    await assert.rejects(observe(f), error => {
+      assert.equal(error.nativeReadiness.phase, 'worker-catalog');
+      assert.equal(error.nativeReadiness.targetId, 'worker');
+      if (mode === 'hang') {
+        assert.equal(error.nativeReadiness.scriptLoaded, false);
+        assert.equal(error.nativeReadiness.evaluating, false);
+      }
+      return true;
+    });
+    const shouldEvaluate = !['protocol-error', 'context-destroyed', 'hang'].includes(mode);
+    assert.equal(f.commands.filter(command => command.method === 'Runtime.evaluate').length, shouldEvaluate ? 1 : 0);
+    if (!shouldEvaluate) assert.deepEqual(f.calls, []);
     assert.equal(f.attachments.length, 0);
     assert.equal(f.events.at(-1)[0], 'disconnected');
   });

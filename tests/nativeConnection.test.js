@@ -111,6 +111,43 @@ test('ordinary UI automation retains Playwright defaults after native localizati
 });
 
 for (const persistent of [false, true]) {
+  test(`worker module readiness precedes the localized Options wait (persistent installer: ${persistent})`, async t => {
+    const pending = { ...options, title: 'Options page for BlockDistraction' };
+    const model = await nativeModel(t, [blank, pending, worker]);
+    let called = 0;
+    await connectPreparedNativeBrowser(model.browserType, model.owner, {
+      install: persistent ? async () => {} : undefined,
+      prepareOptions: { waitForInstall: true, installTitle: options.title,
+        async beforeInstallReady(readiness) {
+          called++;
+          assert.equal(readiness.waitForInstall, true);
+          assert.ok(readiness.timeout > 0 && readiness.timeout <= 15000);
+          assert.equal(readiness.targets.find(target => target.id === options.id).title, pending.title);
+          assert.equal(model.connections.some(client => client.isConnected()), persistent);
+          assert.ok(model.requests.every(request => request.url === '/json/list'));
+          model.events.push('worker module ready');
+          model.targets.set(options.id, options);
+        } }
+    });
+    assert.equal(called, 1);
+    assert.ok(model.events.indexOf('worker module ready') < model.events.indexOf('create keeper'));
+    if (persistent) assert.ok(model.events.indexOf('worker module ready') < model.events.indexOf('disconnect 1'));
+  });
+
+  test(`worker module startup failure is preserved before Options cleanup (persistent installer: ${persistent})`, async t => {
+    const model = await nativeModel(t);
+    const failure = new Error('The native worker module did not finish');
+    await assert.rejects(connectPreparedNativeBrowser(model.browserType, model.owner, {
+      install: persistent ? async () => {} : undefined,
+      prepareOptions: { waitForInstall: true, installTitle: options.title,
+        beforeInstallReady: async () => { throw failure; } }
+    }), error => error === failure);
+    assert.deepEqual([...model.targets.values()], [blank, options, worker]);
+    assert.ok(model.requests.every(request => request.url === '/json/list'));
+    assert.equal(model.connections.length, persistent ? 1 : 0);
+    if (persistent) assert.deepEqual(model.events, ['connect 1', 'disconnect 1']);
+  });
+
   test(`native worker prerequisites finish while the install view is still alive (persistent installer: ${persistent})`, async t => {
     const model = await nativeModel(t);
     let enter, release;
@@ -260,6 +297,7 @@ test('native restoration observes original tabs without installation, target mut
   let evidence;
   const browser = await connectPreparedNativeBrowser(model.browserType, model.owner, {
     prepareOptions: { restoreSession: true,
+      beforeInstallReady: () => { throw new Error('Session restore must not initialize or inspect a worker'); },
       beforePageCleanup: () => { throw new Error('Session restore must not inspect or warm a worker'); } },
     onPrepared: prepared => { evidence = prepared; }
   });

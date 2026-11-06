@@ -205,7 +205,7 @@ export class ExtensionHarness {
           // those defaults. External process launch is independent of this.
           noDefaults: this.testInfo.tags.includes('@native-visibility'),
           prepareOptions: { waitForInstall, installTitle, restoreSession,
-            beforePageCleanup: readiness => requireWorkerCatalogBeforeCleanup(this.nativeOwner.endpoint,
+            beforeInstallReady: readiness => requireWorkerCatalogBeforeCleanup(this.nativeOwner.endpoint,
               readiness, { testInfo: this.testInfo }) },
           onPrepared: prepared => this.testInfo.attach('native-pages-before-cdp', {
             contentType: 'application/json', body: JSON.stringify(prepared)
