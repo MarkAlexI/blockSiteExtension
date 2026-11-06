@@ -53,7 +53,11 @@ async function devtools(t, initial, { stallListReads = 0, listStatus = 200, list
     server.close(); server.closeAllConnections();
     await closed;
   });
-  return { endpoint: `http://127.0.0.1:${server.address().port}`, targets, requests, polled };
+  return { endpoint: `http://127.0.0.1:${server.address().port}`, targets, requests, polled,
+    async discoverTargets() {
+      requests.push({ method: 'GET', url: '/json/list' });
+      return [...targets.values()];
+    } };
 }
 
 const blank = { id: 'blank', type: 'page', url: 'about:blank' };
@@ -172,8 +176,12 @@ test('a native translation key fails fresh setup without closing or reloading th
 test('an uncompleted native translation times out without weakening readiness or clearing pages', async t => {
   const loading = { ...options, title: 'Options page for BlockDistraction' };
   const api = await devtools(t, [blank, worker, loading]);
-  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 100 }),
+  let elapsed = 0;
+  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 200,
+    now: () => elapsed, sleep: async ms => { elapsed += ms; }, discoverTargets: api.discoverTargets }),
     /install localization not completed/);
+  assert.equal(elapsed, 200);
+  assert.equal(api.requests.length, 2);
   assert.equal(api.requests.every(request => request.url === '/json/list'), true);
   assert.deepEqual([...api.targets.values()], [blank, worker, loading]);
 });
@@ -202,8 +210,12 @@ test('native setup creates a keeper blank tab before closing the last restored p
 
 test('missing install completion is a setup failure, without clearing pages or rerunning a scenario', async t => {
   const api = await devtools(t, [blank, worker]);
-  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 100 }),
+  let elapsed = 0;
+  await assert.rejects(prepareNativePages(api.endpoint, { waitForInstall: true, installTitle, timeout: 200,
+    now: () => elapsed, sleep: async ms => { elapsed += ms; }, discoverTargets: api.discoverTargets }),
     /install page not observed/);
+  assert.equal(elapsed, 200);
+  assert.equal(api.requests.length, 2);
   assert.equal(api.requests.every(request => request.url === '/json/list'), true);
   assert.deepEqual([...api.targets.values()], [blank, worker]);
 });

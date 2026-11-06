@@ -13,6 +13,12 @@ async function nativeModel(t, initial = [blank, options, worker]) {
   const connections = [], requests = [], events = [], observations = [];
   let reads = 0, resolvePolled;
   const polled = new Promise(resolve => { resolvePolled = resolve; });
+  const discoverTargets = async () => {
+    requests.push({ method: 'GET', url: '/json/list' });
+    const snapshot = [...targets.values()];
+    observations.push({ connected: connections.some(browser => browser.isConnected()), targets: snapshot });
+    return snapshot;
+  };
   const server = createServer((request, response) => {
     requests.push({ method: request.method, url: request.url });
     response.setHeader('content-type', 'application/json');
@@ -58,7 +64,7 @@ async function nativeModel(t, initial = [blank, options, worker]) {
     connections.push(browser); events.push(`connect ${number}`);
     return browser;
   } };
-  return { owner, browserType, targets, requests, connections, events, observations, polled };
+  return { owner, browserType, targets, requests, connections, events, observations, polled, discoverTargets };
 }
 
 test('persistent installation observes localized readiness before disconnect, then cleans up and attaches a fresh client', async t => {
@@ -114,12 +120,15 @@ for (const pendingTitle of [null, 'Options page for BlockDistraction']) {
 
 test('a missing persistent install page fails with one install and one disconnect, without cleanup or scenario attach', async t => {
   const model = await nativeModel(t, [blank, worker]);
-  let installs = 0;
+  let installs = 0, elapsed = 0;
   await assert.rejects(connectPreparedNativeBrowser(model.browserType, model.owner, {
     install: async () => { installs++; },
-    prepareOptions: { waitForInstall: true, installTitle: options.title, timeout: 100 }
+    prepareOptions: { waitForInstall: true, installTitle: options.title, timeout: 200,
+      now: () => elapsed, sleep: async ms => { elapsed += ms; }, discoverTargets: model.discoverTargets }
   }), /install page not observed/);
   assert.equal(installs, 1);
+  assert.equal(elapsed, 200, 'the missing-page deadline is independent of CPU and HTTP scheduling');
+  assert.equal(model.observations.length, 2);
   assert.equal(model.connections.length, 1);
   assert.equal(model.observations.every(observation => observation.connected), true);
   assert.equal(model.connections[0].isConnected(), false);

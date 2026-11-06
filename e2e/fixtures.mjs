@@ -133,7 +133,7 @@ export class ExtensionHarness {
       args: [`--disable-extensions-except=${this.extensionPath}`, `--load-extension=${this.extensionPath}`,
         ...(this.prefetchFixture ? [
           `--ignore-certificate-errors-spki-list=${this.prefetchFixture.spki}`,
-          '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1', '--no-proxy-server'
+          `--host-resolver-rules=${this.prefetchFixture.hostResolverRules}`, '--no-proxy-server'
         ] : []),
         // Restored pages and startup alarms run before Playwright routes exist.
         // This dedicated scenario cannot contact the production license host.

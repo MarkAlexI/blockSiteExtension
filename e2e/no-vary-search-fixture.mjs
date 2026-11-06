@@ -8,19 +8,21 @@ import { createHash, randomUUID, X509Certificate } from 'node:crypto';
 
 const execute = promisify(execFile);
 export const NO_VARY_SEARCH = 'params=("utm_source")';
+const HOST = 'prefetch.bd-e2e.test';
 
 // A real HTTPS origin is required: routed/fulfilled requests disable Chromium's
 // HTTP cache and cannot establish that a speculative response was reused.
 export async function startNoVarySearchFixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'bd-nvs-'));
   const events = [], cases = new Map();
-  let server, origin, closed = false;
+  const origin = `https://${HOST}`;
+  let server, closed = false;
   try {
     const keyPath = path.join(root, 'server.key'), certPath = path.join(root, 'server.pem');
     await mkdir(root, { recursive: true });
     await execute(process.env.BD_OPENSSL || 'openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-      '-keyout', keyPath, '-out', certPath, '-days', '2', '-subj', '/CN=localhost',
-      '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { timeout: 15_000, windowsHide: true });
+      '-keyout', keyPath, '-out', certPath, '-days', '2', '-subj', `/CN=${HOST}`,
+      '-addext', `subjectAltName=DNS:${HOST},DNS:localhost,IP:127.0.0.1`], { timeout: 15_000, windowsHide: true });
     const key = await readFile(keyPath), cert = await readFile(certPath);
     const publicKey = new X509Certificate(cert).publicKey.export({ type: 'spki', format: 'der' });
     const spki = createHash('sha256').update(publicKey).digest('base64');
@@ -49,8 +51,12 @@ export async function startNoVarySearchFixture() {
       response.end(`<!doctype html><title>Native prefetched document</title><body data-response-token="${token}"><h1 id="allowed-resource">Allowed fixture</h1><script>console.info(${JSON.stringify('bd-nvs-executed:' + token)})</script></body>`);
     });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    origin = `https://127.0.0.1:${server.address().port}`;
-    return { origin, spki, cert, events,
+    const networkOrigin = `https://127.0.0.1:${server.address().port}`;
+    // Resolve the default HTTPS port to our unprivileged local listener. The
+    // production path-rule normalizer removes ports, so a random-port URL would
+    // test a different DNR filter from the browser's actual navigation URL.
+    const hostResolverRules = `MAP ${HOST}:443 127.0.0.1:${server.address().port}, MAP * ~NOTFOUND`;
+    return { origin, networkOrigin, hostResolverRules, spki, cert, events,
       createCase(name, { changeMaterial = false } = {}) {
         const id = `${name}-${randomUUID()}`;
         const query = new URLSearchParams({ case: id, keep: 'one', utm_source: 'prefetch' });

@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { get } from 'node:https';
 import { startNoVarySearchFixture, NO_VARY_SEARCH } from '../e2e/no-vary-search-fixture.mjs';
+import { normalizePathRule } from '../rules/normalizePathRule.js';
 
-function read(url, ca, headers = {}) {
+function read(fixture, url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const request = get(url, { ca, headers }, response => {
+    const destination = new URL(url);
+    const listener = new URL(fixture.networkOrigin);
+    destination.hostname = listener.hostname; destination.port = listener.port;
+    const request = get(destination, { ca: fixture.cert,
+      headers: { host: new URL(fixture.origin).host, ...headers } }, response => {
       let body = ''; response.setEncoding('utf8'); response.on('data', chunk => { body += chunk; });
       response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body }));
     });
@@ -17,15 +22,23 @@ test('native prefetch origin serves real TLS, cacheable No-Vary-Search responses
   const fixture = await startNoVarySearchFixture();
   try {
     const entry = fixture.createCase('positive');
-    const source = await read(entry.sourceUrl, fixture.cert);
+    assert.equal(new URL(entry.navigationUrl).port, '', 'the browser uses the default HTTPS port');
+    assert.equal(fixture.hostResolverRules,
+      `MAP prefetch.bd-e2e.test:443 127.0.0.1:${new URL(fixture.networkOrigin).port}, MAP * ~NOTFOUND`);
+    const blockURL = normalizePathRule(fixture.origin + '/target');
+    assert.equal(blockURL, 'prefetch.bd-e2e.test/target');
+    assert.ok(entry.prefetchUrl.startsWith('https://' + blockURL));
+    assert.ok(entry.navigationUrl.startsWith('https://' + blockURL));
+    assert.equal(entry.sourceUrl.startsWith('https://' + blockURL), false);
+    const source = await read(fixture, entry.sourceUrl);
     assert.equal(source.status, 200);
     assert.equal(source.headers['cache-control'], 'no-store');
     const json = source.body.match(/<script type="speculationrules">(.*?)<\/script>/)[1];
     const rules = JSON.parse(json);
     assert.deepEqual(rules.prefetch[0].urls, [entry.prefetchUrl]);
     assert.equal(rules.prefetch[0].expects_no_vary_search, NO_VARY_SEARCH);
-    const first = await read(entry.prefetchUrl, fixture.cert, { 'sec-purpose': 'prefetch' });
-    const second = await read(entry.navigationUrl, fixture.cert);
+    const first = await read(fixture, entry.prefetchUrl, { 'sec-purpose': 'prefetch' });
+    const second = await read(fixture, entry.navigationUrl);
     assert.equal(first.headers['no-vary-search'], NO_VARY_SEARCH);
     assert.equal(first.headers['cache-control'], 'private, max-age=300');
     assert.equal(fixture.events.length, 2, 'the server never simulates browser cache reuse');
@@ -38,7 +51,7 @@ test('native prefetch origin serves real TLS, cacheable No-Vary-Search responses
     const mismatch = fixture.createCase('negative', { changeMaterial: true });
     assert.equal(new URL(mismatch.prefetchUrl).searchParams.get('keep'), 'one');
     assert.equal(new URL(mismatch.navigationUrl).searchParams.get('keep'), 'two');
-    assert.equal((await read(fixture.origin + '/unknown', fixture.cert)).status, 404);
+    assert.equal((await read(fixture, fixture.origin + '/unknown')).status, 404);
   } finally { await fixture.close(); await fixture.close(); }
-  await assert.rejects(read(fixture.origin, fixture.cert));
+  await assert.rejects(read(fixture, fixture.origin));
 });
