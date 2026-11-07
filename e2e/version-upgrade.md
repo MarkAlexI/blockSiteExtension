@@ -1,20 +1,20 @@
 # Native version-update preservation — scenario 67
 
-## Upgrade matrix — 5.6.1
+## Upgrade matrix — 5.6.2
 
 Both actual historical packages are pinned in `upgrade-baseline.json`:
 
 | Source | Commit | Focus control after update |
 | --- | --- | --- |
 | 5.4.14 | `4b154dbce16b9c463e9ac5d7d9e9ff9cb2f99e68` | Existing five-minute session and real Popup Stop |
-| 5.6.0 | `2111ff2d7f254320cac26c7571213910155f9521` | One-minute session ends at its original native alarm deadline |
+| 5.6.1 | `e33fc4c5682160459061fcbb51a8792d9e08a98d` | One-minute session ends at its original native alarm deadline |
 
 The preparation command below builds both packages with their own historical
 packagers and verifies each archive, commit, manifest and extracted runtime.
 Each test owns a separate profile and stable install directory. Source-version
 selection cannot fall back to the other package. The older case remains intact.
 
-The 5.6.0 case opens fresh current Options through the Popup's actual Scheduled
+The 5.6.1 case opens fresh current Options through the Popup's actual Scheduled
 focus link (`target="_blank"`) before reloading any retained old document. The
 ordinary Options button can reuse an existing tab. The original retained/closed
 branch is recorded in either case. Saved budgets, paid state, alarm deadlines,
