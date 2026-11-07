@@ -1,18 +1,22 @@
 [
-{
-  "repository": "MarkAlexI/blockSiteExtension",
-  "commit": "4b154dbce16b9c463e9ac5d7d9e9ff9cb2f99e68",
-  "fromVersion": "5.4.14",
-  "packageTool": "tools/package-store.js",
-  "packageArgs": ["chrome"],
-  "archiveSuffix": "-cws.zip"
-},
-{
-  "repository": "MarkAlexI/blockSiteExtension",
-  "commit": "9088757b1f115cd7ac4613836da8472455b9f391",
-  "fromVersion": "5.5.12",
-  "packageTool": "tools/package-store.js",
-  "packageArgs": ["chrome"],
-  "archiveSuffix": "-cws.zip"
-}
+  {
+    "repository": "MarkAlexI/blockSiteExtension",
+    "commit": "4b154dbce16b9c463e9ac5d7d9e9ff9cb2f99e68",
+    "fromVersion": "5.4.14",
+    "packageTool": "tools/package-store.js",
+    "packageArgs": [
+      "chrome"
+    ],
+    "archiveSuffix": "-cws.zip"
+  },
+  {
+    "repository": "MarkAlexI/blockSiteExtension",
+    "commit": "2111ff2d7f254320cac26c7571213910155f9521",
+    "fromVersion": "5.6.0",
+    "packageTool": "tools/package-store.js",
+    "packageArgs": [
+      "chrome"
+    ],
+    "archiveSuffix": "-cws.zip"
+  }
 ]

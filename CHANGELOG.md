@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.1] - 2026-11-07
+
+### Fixed
+- Start a due scheduled Focus session before rearming the next occurrence, so an alarm lookup or creation failure cannot consume the current start.
+- Retain Skip/Undo keyboard focus during pending requests and failed actions, while guarding duplicate requests and preserving later user focus choices.
+- Disable Popup editing through a native fieldset during Focus, preserving independent access restrictions and leaving Start/Stop controls operable.
+- Avoid returning Undo focus into a hidden document or an open modal dialog.
+
+### Tests
+- Extend native scenarios 21 and 58 for schedule keyboard focus and actual disabled editing controls.
+- Target native upgrades from the actual 5.6.0 runtime to 5.6.1 while retaining the 5.4.14 baseline and existing Focus, sound and spent-limit checks.
+
 ## [5.6.0] - 2026-11-07
 
 ### Added
