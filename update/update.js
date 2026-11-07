@@ -7,9 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('version').textContent = version;
   
   const features = [
-    "Improved extension update handling when Settings is left open.",
-    "If Settings cannot load rules, Copy Report provides troubleshooting details that remain available after restarting the browser.",
-    "Switching between Always, Schedule and Daily Limit keeps today's used time, including after a browser restart."
+    "Undo a skipped scheduled Focus session before its original start, from the popup or Settings.",
+    "Restoring a session keeps its original start time without changing your other scheduled sessions.",
+    "A refreshed update page and scheduled Focus actions fit small screens and enlarged text."
   ];
   
   const ul = document.getElementById('features');
