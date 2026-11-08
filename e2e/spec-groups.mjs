@@ -3,6 +3,7 @@
 export const testFiles = Object.freeze([
   'dialogs.spec.mjs',
   'rule-pack-telemetry.spec.mjs',
+  'url-safety.spec.mjs',
   'password-dialog.spec.mjs',
   'accessibility.spec.mjs',
   'chromium.spec.mjs',
