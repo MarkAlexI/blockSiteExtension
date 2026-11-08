@@ -27,6 +27,7 @@ import { readProPanelReadiness } from './pro-panel-readiness.mjs';
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.resolve(process.env.BD_EXTENSION_PATH || path.join(directory, '..'));
 const VERIFY_URL = 'https://blockdistraction.com/api/verifyKey';
+const TELEMETRY_URL = 'https://blockdistraction.com/api/telemetry';
 export const TEST_KEY = 'BD-E2E-VALID-KEY';
 export const SITE = 'http://usage.bd-e2e.test';
 export const LISTS = [
@@ -110,6 +111,8 @@ export class ExtensionHarness {
     this.options = [];
     this.pageErrors = [];
     this.verificationCalls = [];
+    this.telemetryCalls = [];
+    this.telemetryHandler = async () => ({ status: 202, body: { ok: true } });
     this.verificationHandler = async () => ({ status: 200, body: { isPro: true } });
     this.releaseVerification = null;
     this.traceStarted = false;
@@ -282,6 +285,17 @@ export class ExtensionHarness {
       const request = route.request();
       const url = new URL(request.url());
       if (this.startupFixture?.owns(url)) return route.continue();
+      if (url.href === TELEMETRY_URL) {
+        if (request.method() === 'OPTIONS') return route.fulfill({ status: 204,
+          headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS',
+            'access-control-allow-headers': 'Content-Type' } });
+        if (request.method() !== 'POST') return route.abort();
+        const payload = request.postDataJSON();
+        this.telemetryCalls.push({ payload, serviceWorker: Boolean(request.serviceWorker()) });
+        const reply = await this.telemetryHandler(payload);
+        return route.fulfill({ status: reply.status, contentType: 'application/json',
+          headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(reply.body) });
+      }
       if (url.href === VERIFY_URL) {
         if (request.method() === 'OPTIONS') return route.fulfill({ status: 204,
           headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS',

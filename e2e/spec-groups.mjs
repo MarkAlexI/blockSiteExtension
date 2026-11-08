@@ -2,6 +2,7 @@
 // in isolated jobs; native timers remain serial inside each job.
 export const testFiles = Object.freeze([
   'dialogs.spec.mjs',
+  'rule-pack-telemetry.spec.mjs',
   'password-dialog.spec.mjs',
   'accessibility.spec.mjs',
   'chromium.spec.mjs',
