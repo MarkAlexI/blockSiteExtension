@@ -184,7 +184,7 @@ const telemetryClient = createTelemetryClient({
   getContext: getCurrentTelemetryContext,
   scheduleRetry: async (when) => {
     await chrome.alarms.clear(TELEMETRY_RETRY_ALARM);
-    chrome.alarms.create(TELEMETRY_RETRY_ALARM, { when });
+    await chrome.alarms.create(TELEMETRY_RETRY_ALARM, { when });
   },
   cancelRetry: () => chrome.alarms.clear(TELEMETRY_RETRY_ALARM)
 });
@@ -603,10 +603,10 @@ async function reportFocusRecoveryFailure(reason, error) {
   }
 }
 
-function getFocusCompletionAlarm() {
+function getAlarm(name) {
   let result;
   try {
-    result = chrome.alarms.get(FOCUS_COMPLETION_ALARM);
+    result = chrome.alarms.get(name);
   } catch (_) {
     result = undefined;
   }
@@ -616,7 +616,7 @@ function getFocusCompletionAlarm() {
 
   return new Promise((resolve, reject) => {
     try {
-      chrome.alarms.get(FOCUS_COMPLETION_ALARM, alarm => {
+      chrome.alarms.get(name, alarm => {
         const runtimeError = chrome.runtime.lastError;
         if (runtimeError) {
           reject(new Error(runtimeError.message || String(runtimeError)));
@@ -631,7 +631,7 @@ function getFocusCompletionAlarm() {
 }
 
 async function ensureFocusCompletionAlarm(endTime, shouldContinue) {
-  const existing = await getFocusCompletionAlarm();
+  const existing = await getAlarm(FOCUS_COMPLETION_ALARM);
   if (!shouldContinue()) return false;
 
   const scheduledTime = Number(existing?.scheduledTime ?? existing?.when);
@@ -1204,7 +1204,8 @@ function updateContextMenu(hasPaidAccess) {
 }
 
 if (chrome.contextMenus) {
-  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  chrome.contextMenus.onClicked.addListener((info, tab) =>
+    runAsyncHandler(ASYNC_HANDLER_OPERATIONS.CONTEXT_MENU_ADD, async () => {
     if (info.menuItemId !== 'blockDistraction') return;
     
     if (!await ProManager.hasPaidAccess()) {
@@ -1263,7 +1264,8 @@ if (chrome.contextMenus) {
     } catch (error) {
       logger.info('Error processing context menu block:', error);
     }
-  });
+    })
+  );
 }
 
 async function showUpdates(details) {
@@ -1503,7 +1505,7 @@ chrome.runtime.onStartup.addListener(() =>
       logger.info('Could not restore the telemetry retry on startup:', error);
     }
 
-    ensureAlarmsCreated();
+    await ensureAlarmsCreated();
 
     await initializeExtension({ reason: 'startup' });
     await checkAndRequestPermissions({ reason: 'startup' }, { notifyIfMissing: true });
@@ -1640,22 +1642,26 @@ async function checkAndRequestPermissions(details, options = {}) {
 }
 
 if (chrome.permissions?.onRemoved) {
-  chrome.permissions.onRemoved.addListener(async permissions => {
+  chrome.permissions.onRemoved.addListener(permissions =>
+    runAsyncHandler(ASYNC_HANDLER_OPERATIONS.PERMISSION_REMOVED, async () => {
     if (affectsRequiredHostAccess(permissions.origins)) {
       await checkAndRequestPermissions(
         { reason: 'permission_removed' },
         { notifyIfMissing: true, assumeMissing: true }
       );
     }
-  });
+    })
+  );
 }
 
 if (chrome.permissions?.onAdded) {
-  chrome.permissions.onAdded.addListener(async permissions => {
+  chrome.permissions.onAdded.addListener(permissions =>
+    runAsyncHandler(ASYNC_HANDLER_OPERATIONS.PERMISSION_ADDED, async () => {
     if (affectsRequiredHostAccess(permissions.origins)) {
       await checkAndRequestPermissions({ reason: 'permission_added' });
     }
-  });
+    })
+  );
 }
 
 async function getDiagnosticsAccess() {
@@ -1820,7 +1826,7 @@ chrome.runtime.onInstalled.addListener(details =>
       logger.info('Uninstall URL could not be set:', error);
     }
 
-    ensureAlarmsCreated();
+    await ensureAlarmsCreated();
     await telemetryClient.restoreRetry();
 
     if (details.reason === 'install') {
@@ -2349,7 +2355,8 @@ async function runDailyMaintenanceStep(name, operation) {
   }
 }
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+chrome.alarms.onAlarm.addListener(alarm =>
+  runAsyncHandler(ASYNC_HANDLER_OPERATIONS.SCHEDULED_ALARM, async () => {
   if (alarm.name === 'check_pro_expiry') {
     await runDailyMaintenanceStep('uninstall URL update', updateUninstallURL);
     await runDailyMaintenanceStep('license verification', syncLicenseKeyStatus);
@@ -2398,27 +2405,27 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       checkAndRequestPermissions({ reason: 'scheduled_alarm' })
     ]);
   }
-});
+  })
+);
+
+let alarmSetupPromise = null;
 
 function ensureAlarmsCreated() {
-  chrome.alarms.get('check_pro_expiry', (alarm) => {
-    if (!alarm) {
-      chrome.alarms.create('check_pro_expiry', {
-        delayInMinutes: 0.5,
-        periodInMinutes: 1440
-      });
-    }
-  });
-  
-  chrome.alarms.get('update_scheduled_rules', (alarm) => {
-    if (!alarm) {
-      chrome.alarms.create('update_scheduled_rules', {
-        periodInMinutes: 1
-      });
-    }
-  });
+  if (alarmSetupPromise) return alarmSetupPromise;
+  // One failed alarm must not stop the other one. Share a pending setup across
+  // cold import, startup and install so existing deadlines are not reset twice.
+  const alarms = [
+    ['check_pro_expiry', { delayInMinutes: 0.5, periodInMinutes: 1440 }],
+    ['update_scheduled_rules', { periodInMinutes: 1 }]
+  ];
+  alarmSetupPromise = Promise.all(alarms.map(([name, details]) =>
+    runAsyncHandler(ASYNC_HANDLER_OPERATIONS.STARTUP, async () => {
+      if (!await getAlarm(name)) await chrome.alarms.create(name, details);
+    })
+  )).finally(() => { alarmSetupPromise = null; });
+  return alarmSetupPromise;
 }
 
-ensureAlarmsCreated();
+void ensureAlarmsCreated();
 
 void reconcileScheduledFocus();
