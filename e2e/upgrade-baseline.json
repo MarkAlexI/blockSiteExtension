@@ -11,8 +11,8 @@
   },
   {
     "repository": "MarkAlexI/blockSiteExtension",
-    "commit": "e33fc4c5682160459061fcbb51a8792d9e08a98d",
-    "fromVersion": "5.6.1",
+    "commit": "02113003a64aa0d7490e055d7d77506f266da4ad",
+    "fromVersion": "5.6.2",
     "packageTool": "tools/package-store.js",
     "packageArgs": [
       "chrome"

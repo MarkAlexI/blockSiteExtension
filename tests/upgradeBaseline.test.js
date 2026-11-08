@@ -9,8 +9,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { baselineConfig,baselineConfigs,readUpgradeBaseline,withPreviousCheckout } from '../e2e/prepare-upgrade-baseline.mjs';
 
-test('the upgrade matrix retains the historical baseline and adds the actual last 5.6.1 runtime',()=>{
-  assert.deepEqual(baselineConfigs.map(config=>config.fromVersion),['5.4.14','5.6.1']);
+test('the upgrade matrix retains the historical baseline and adds the actual last 5.6.2 runtime',()=>{
+  assert.deepEqual(baselineConfigs.map(config=>config.fromVersion),['5.4.14','5.6.2']);
   assert.equal(baselineConfig,baselineConfigs[0]);
 });
 
@@ -108,8 +108,8 @@ test('both prepared baselines resolve independently and cannot be substituted fo
     const recent=baselineConfigs[1];
     await assert.rejects(readUpgradeBaseline(undefined,recent,{env:{
       BD_PREVIOUS_EXTENSION_PATH:runtimes['5.4.14'],BD_PREVIOUS_EXTENSION_PATHS:JSON.stringify({'5.4.14':runtimes['5.4.14']})}}),
-    /missing prepared baseline 5\.6\.1/);
+    /missing prepared baseline 5\.6\.2/);
     await writeFile(pointerFile,JSON.stringify({runtime:runtimes['5.4.14']}));
-    await assert.rejects(readUpgradeBaseline(undefined,recent,{env:{},pointerFile}),/prepare the pinned baseline 5\.6\.1/);
+    await assert.rejects(readUpgradeBaseline(undefined,recent,{env:{},pointerFile}),/prepare the pinned baseline 5\.6\.2/);
   }finally{await rm(root,{recursive:true,force:true});}
 });

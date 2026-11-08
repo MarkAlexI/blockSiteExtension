@@ -1,11 +1,11 @@
-# BlockDistraction Chromium E2E **5.6.2**
+# BlockDistraction Chromium E2E **5.6.3**
 
 ## Current upgrade target
 
-The upgrade group retains 5.4.14 and targets the actual 5.6.1 → 5.6.2
+The upgrade group retains 5.4.14 and targets the actual 5.6.2 → 5.6.3
 transition. It checks saved budgets, fresh Options before any retained-tab
-reload, and natural Focus completion with one native sound. The 5.6.1
-source matches the previously packaged runtime snapshot; 5.6.2 requires a fresh CI run.
+reload, and natural Focus completion with one native sound. The 5.6.2
+source matches the previously packaged runtime snapshot; 5.6.3 requires a fresh CI run.
 See [the current matrix and acceptance limits](version-upgrade.md).
 
 ## macOS smoke CI
