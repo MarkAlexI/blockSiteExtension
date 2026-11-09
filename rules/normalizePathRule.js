@@ -6,10 +6,11 @@ export function normalizePathRule(input) {
     const urlString = /^https?:/i.test(input) ? input : `https://${input}`;
     const url = new URL(urlString);
     
-    const hostname = url.hostname.replace(/^www\./, '');
+    // host preserves serialized non-default ports as part of the URL filter.
+    const host = url.host.replace(/^www\./, '');
     const pathname = url.pathname.replace(/\/+$/, '');
 
-    return hostname + pathname;
+    return host + pathname;
   } catch(e) {
     return input;
   }
