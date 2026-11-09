@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { installAddFocusTimerBarrier } from './add-focus-timer-barrier.mjs';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const click = (page, selector) => page.locator ? page.locator(selector).click() : page.clickUnsettled(selector);
 const type = (page, text) => page.keyboard ? page.keyboard.type(text) : page.typeActive(text);
@@ -11,70 +12,84 @@ export const focusScenarios = [{
     const page = await e.openOptions();
     for (const mode of ['always', 'daily_limit']) {
       const url = `keyboard-${mode}.bd-e2e.test`;
-      await page.evaluate(({ mode, url }) => {
-        window.__bdFocusProbe?.cleanup?.();
-        const probe = window.__bdFocusProbe = {};
-        document.querySelector('#add-rule').addEventListener('click', () => {
-          probe.addedAt = performance.now();
-        }, { capture: true, once: true });
-        const input = event => {
+      await page.evaluate(installAddFocusTimerBarrier);
+      try {
+        await page.evaluate(({ mode, url }) => {
+          window.__bdFocusProbe?.cleanup?.();
+          const probe = window.__bdFocusProbe = {};
+          document.querySelector('#add-rule').addEventListener('click', () => {
+            probe.addedAt = performance.now();
+            setTimeout(() => { probe.timerSentinelFired = true; }, 100);
+          }, { capture: true, once: true });
+          const input = event => {
+            const row = document.querySelector('#rules-container tr:has(.save-btn)');
+            const urlInput = row?.querySelector('td:first-child input');
+            if (event.target !== urlInput || urlInput.value !== url) return;
+            probe.urlFocusedOnInput = document.activeElement === urlInput;
+            probe.trustedInput = event.isTrusted;
+            if (mode === 'daily_limit') {
+              const select = row.querySelector('.blocking-mode-select');
+              select.value = mode; select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            probe.chosen = mode === 'daily_limit' ? row.querySelector('.daily-limit-minutes') : row.querySelector('td:nth-child(2) input');
+            probe.chosen.value = ''; probe.chosen.focus();
+            probe.elapsed = performance.now() - probe.addedAt;
+            probe.cleanup();
+          };
+          probe.cleanup = () => document.removeEventListener('input', input, true);
+          document.addEventListener('input', input, true);
+        }, { mode, url });
+        await click(page, '#add-rule');
+        // Native input and the field transition precede delivery of any former
+        // 100ms Add callback, even when the automation round trip takes longer.
+        if (page.keyboard) await page.keyboard.insertText(url); else await type(page, url);
+        const { elapsed, urlFocusedOnInput, trustedInput } = await page.evaluate(() => {
+          const { elapsed, urlFocusedOnInput, trustedInput } = window.__bdFocusProbe;
+          return { elapsed, urlFocusedOnInput, trustedInput };
+        });
+        assert.equal(urlFocusedOnInput, true, 'Add must focus URL without fill() or an extra settle');
+        assert.equal(trustedInput, true, 'the URL is inserted through native browser input');
+        assert.deepEqual(await page.evaluate(() => {
+          const { held, delivered, released } = window.__bdAddFocusTimerBarrier.read();
+          return { sentinelHeld: held >= 1, delivered, released };
+        }), { sentinelHeld: true, delivered: 0, released: false }, 'field selection precedes delayed callback delivery');
+        await type(page, mode === 'daily_limit' ? '23' : 'https://redirect.bd-e2e.test');
+        const timerBarrier = await page.evaluate(() => window.__bdAddFocusTimerBarrier.release());
+        assert.equal(await page.evaluate(() => window.__bdFocusProbe.timerSentinelFired), true,
+          'the native 100ms timer is delivered before checking retained focus');
+        await wait(150); // Also observe ordinary timers after the barrier is gone.
+        assert.equal(await page.evaluate(() => document.activeElement === window.__bdFocusProbe.chosen), true, 'late callbacks must not reclaim URL focus');
+        const actual = await page.evaluate(() => {
           const row = document.querySelector('#rules-container tr:has(.save-btn)');
-          const urlInput = row?.querySelector('td:first-child input');
-          if (event.target !== urlInput || urlInput.value !== url) return;
-          probe.urlFocusedOnInput = document.activeElement === urlInput;
-          probe.trustedInput = event.isTrusted;
-          if (mode === 'daily_limit') {
-            const select = row.querySelector('.blocking-mode-select');
-            select.value = mode; select.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          probe.chosen = mode === 'daily_limit' ? row.querySelector('.daily-limit-minutes') : row.querySelector('td:nth-child(2) input');
-          probe.chosen.value = ''; probe.chosen.focus();
-          probe.elapsed = performance.now() - probe.addedAt;
-          probe.cleanup();
-        };
-        probe.cleanup = () => document.removeEventListener('input', input, true);
-        document.addEventListener('input', input, true);
-      }, { mode, url });
-      await click(page, '#add-rule');
-      // One real Input.insertText command: URL input and the field transition
-      // are observed in the same browser event, without per-character CDP
-      // round trips or a Node read between Add and the critical field change.
-      if (page.keyboard) await page.keyboard.insertText(url); else await type(page, url);
-      const { elapsed, urlFocusedOnInput, trustedInput } = await page.evaluate(() => {
-        const { elapsed, urlFocusedOnInput, trustedInput } = window.__bdFocusProbe;
-        return { elapsed, urlFocusedOnInput, trustedInput };
-      });
-      assert.equal(urlFocusedOnInput, true, 'Add must focus URL without fill() or an extra settle');
-      assert.equal(trustedInput, true, 'the URL is inserted through native browser input');
-      assert.ok(elapsed < 100, `Early field change was ${elapsed}ms after Add; the critical window was not exercised`);
-      await type(page, mode === 'daily_limit' ? '23' : 'https://redirect.bd-e2e.test');
-      await wait(150); // Observe beyond the old callback; no settle before input.
-      assert.equal(await page.evaluate(() => document.activeElement === window.__bdFocusProbe.chosen), true, 'late callbacks must not reclaim URL focus');
-      const actual = await page.evaluate(() => {
-        const row = document.querySelector('#rules-container tr:has(.save-btn)');
-        return { url: row.querySelector('td:first-child input').value, value: window.__bdFocusProbe.chosen.value };
-      });
-      assert.deepEqual(actual, { url, value: mode === 'daily_limit' ? '23' : 'https://redirect.bd-e2e.test' });
-      await click(page, `${editing} .save-btn`);
-      const until = Date.now() + 15000; let saved;
-      do {
-        saved = (await e.state()).rules.find(rule => rule.blockURL === url);
-        if (saved) break;
-        await wait(100);
-      } while (Date.now() < until);
-      assert.ok(saved, 'persisted rule must exist');
-      const assignment = saved.assignments.find(item => item.listId === 'general');
-      assert.ok(assignment, 'persisted General assignment must exist');
-      assert.equal(saved.blockURL, url);
-      assert.equal(saved.redirectURL, mode === 'always' ? 'https://redirect.bd-e2e.test' : '');
-      assert.equal(assignment.blockingMode, mode);
-      assert.equal(assignment.dailyLimit?.minutes ?? null, mode === 'daily_limit' ? 23 : null);
-      const evidence = { mode, elapsedToChosenFieldMs: elapsed, trustedInput, urlFocusedOnInput, url: saved.blockURL,
-        redirect: saved.redirectURL, assignment };
-      if (e.result) (e.result.focusEvidence ||= []).push(evidence);
-      if (e.testInfo) await e.testInfo.attach(`keyboard-focus-${mode}`, {
-        body: JSON.stringify(evidence, null, 2), contentType: 'application/json'
-      });
+          return { url: row.querySelector('td:first-child input').value, value: window.__bdFocusProbe.chosen.value };
+        });
+        assert.deepEqual(actual, { url, value: mode === 'daily_limit' ? '23' : 'https://redirect.bd-e2e.test' });
+        await click(page, `${editing} .save-btn`);
+        const until = Date.now() + 15000; let saved;
+        do {
+          saved = (await e.state()).rules.find(rule => rule.blockURL === url);
+          if (saved) break;
+          await wait(100);
+        } while (Date.now() < until);
+        assert.ok(saved, 'persisted rule must exist');
+        const assignment = saved.assignments.find(item => item.listId === 'general');
+        assert.ok(assignment, 'persisted General assignment must exist');
+        assert.equal(saved.blockURL, url);
+        assert.equal(saved.redirectURL, mode === 'always' ? 'https://redirect.bd-e2e.test' : '');
+        assert.equal(assignment.blockingMode, mode);
+        assert.equal(assignment.dailyLimit?.minutes ?? null, mode === 'daily_limit' ? 23 : null);
+        const evidence = { mode, elapsedToChosenFieldMs: elapsed, timerBarrier, trustedInput, urlFocusedOnInput, url: saved.blockURL,
+          redirect: saved.redirectURL, assignment };
+        if (e.result) (e.result.focusEvidence ||= []).push(evidence);
+        if (e.testInfo) await e.testInfo.attach(`keyboard-focus-${mode}`, {
+          body: JSON.stringify(evidence, null, 2), contentType: 'application/json'
+        });
+      } finally {
+        await page.evaluate(async () => {
+          window.__bdFocusProbe?.cleanup?.();
+          await window.__bdAddFocusTimerBarrier.release();
+        });
+      }
     }
   }
 }];
