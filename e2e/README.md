@@ -1,12 +1,17 @@
-# BlockDistraction Chromium E2E **5.6.4**
+# BlockDistraction Chromium E2E **5.6.5**
 
-## Current upgrade target
+## Current upgrade matrix
 
-The upgrade group retains 5.4.14 and targets the actual 5.6.3 → 5.6.4
-transition. It checks saved budgets, fresh Options before any retained-tab
-reload, and natural Focus completion with one native sound. The 5.6.3
-source matches the previously packaged runtime snapshot; 5.6.4 requires a fresh CI run.
-See [the current matrix and acceptance limits](version-upgrade.md).
+The upgrade group retains 5.4.14 and targets the actual 5.6.4 → 5.6.5
+transition. The recent source is release commit `21fb73506b22f95f4103868e75061028a5f3d483`,
+which matches the previously packaged 5.6.4 runtime, before the new URL identity changes.
+Both cases retain saved budgets, fresh Options before retained-tab reload,
+and their original Focus and completion-sound controls.
+
+Inventory is **88 = 73 core + 12 lifecycle + 1 overdue + 2 upgrade**;
+macOS smoke remains 24 per architecture. Native URL scenario 88 belongs to core.
+The URL identity base passed native CI; the new 5.6.5 upgrade target still requires
+a fresh native run. See [preparation and acceptance limits](version-upgrade.md).
 
 ## macOS smoke CI
 
