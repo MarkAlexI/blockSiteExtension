@@ -55,6 +55,19 @@ export function assertUpgradeOptionsEditing(view) {
   assert.equal(view.focusLocked, false, 'Focus must release its editing lock before a native rule action');
 }
 
+export function assertUpgradeDnrRules(before, after) {
+  const definitions = rules => rules.map(({ priority, ...definition }) => definition);
+  assert.deepEqual(definitions(after.dnr), definitions(before.dnr), 'native blocking definitions survive the update');
+  // Priorities intentionally change from the old all-100 batch. Verify the
+  // new policy instead of treating that deliberate field change as data loss.
+  const positions = new Map(after.rules.map((rule, index) => [rule.id, index]));
+  const ranked = [...after.dnr].sort((left, right) =>
+    right.condition.urlFilter.length - left.condition.urlFilter.length ||
+    positions.get(left.id) - positions.get(right.id));
+  assert.deepEqual(ranked.map(rule => rule.priority), ranked.map((_, index) => 100 + ranked.length - index - 1),
+    'updated native priorities follow longest compiled filter then first stored rule');
+}
+
 export function assertVersionUpgrade(before,after,receipt,fromVersion='5.4.14') {
   assert.equal(before.version,fromVersion);assert.equal(after.version,expectedVersion);
   assert.notEqual(before.version,after.version);
@@ -72,9 +85,10 @@ export function assertVersionUpgrade(before,after,receipt,fromVersion='5.4.14') 
     'exactly one native update event with the real previous version');
   assert.ok(receipt.events.every(event=>event.extensionId===after.id&&Number.isFinite(event.at)));
   for(const key of ['rules','ruleLists','activeRuleListId','rulesGeneration','ruleRevisions','ruleListRevisions',
-    'credentials','settings','focusSession','focusSchedule','pendingDailyUsageRemaps','dnr']) {
+    'credentials','settings','focusSession','focusSchedule','pendingDailyUsageRemaps']) {
     assert.deepEqual(after[key],before[key],key+' survives the version update');
   }
+  assertUpgradeDnrRules(before, after);
   assert.equal(before.credentials.isPro,true);assert.equal(before.credentials.isLegacyUser,false);
   assert.equal(before.settings.debugMode,true,'non-default setting distinguishes preservation from reset');
   assert.equal(before.focusSession.focusActive,true);
