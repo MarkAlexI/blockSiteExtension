@@ -11,10 +11,10 @@ import Logger from '../utils/logger.js';
 import { resolveContextTarget } from '../utils/resolveContextTarget.js';
 import { VERIFY_API_URL, IS_FIREFOX, LICENSE_SYNC_TIMEOUT_MS, MAX_RULES_LIMIT } from '../utils/constants.js';
 import { updateUninstallURL } from '../utils/updateUninstallURL.js';
-import { createInstallURL } from '../utils/createInstallURL.js';
+import { openInstallPage } from '../utils/createInstallURL.js';
 import { shouldSkipSync } from '../utils/shouldSkipSync.js';
 import { isBlockedURL } from './isBlockedURL.js';
-import { getFocusSessionState } from '../utils/focusSession.js';
+import { getFocusSessionState, createFocusRecoveryTrace } from '../utils/focusSession.js';
 import { isUrlInWhitelist } from '../pro/isUrlInWhitelist.js';
 import { createDnrSynchronizer, getDnrSyncFailureCode } from './dnrSynchronizer.js';
 import { createSpaNavigationEnforcer } from './spaNavigationEnforcer.js';
@@ -363,11 +363,14 @@ const createDnrRule = createDnrRuleFactory(
   path => chrome.runtime.getURL(path)
 );
 
+// Protection decisions must not interpret an unreadable session as inactive.
+const getFocusSessionForProtection = () => getFocusSessionState({ throwOnError: true });
+
 const dnrSynchronizer = createDnrSynchronizer({
   getRules: () => rulesManager.getRules(),
   getRuleListState: () => ruleListsManager.getState(),
   getDailyUsage: () => dailyLimitManager.getUsageSeconds(),
-  getFocusSessionState,
+  getFocusSessionState: getFocusSessionForProtection,
   getAccess: getFocusAccess,
   isRuleActiveNow,
   createDnrRule,
@@ -395,7 +398,7 @@ const dailyLimitTracker = createDailyLimitTracker({
   alarmsApi: chrome.alarms,
   getRules: () => rulesManager.getRules(),
   getRuleListState: () => ruleListsManager.getState(),
-  getFocusSessionState,
+  getFocusSessionState: getFocusSessionForProtection,
   dailyLimitManager,
   dnrSynchronizer,
   getStateGeneration: () => blockingDecisionGeneration,
@@ -586,13 +589,15 @@ async function runFocusCompletionTask(name, operation) {
   }
 }
 
-async function reportFocusRecoveryFailure(reason, error) {
+async function reportFocusRecoveryFailure(reason, error, { phase = 'unknown', scheduled = false } = {}) {
+  const code = phase === 'unknown' ? (scheduled ? 'schedule_recovery_failed' : 'recovery_failed')
+    : `${scheduled ? 'schedule' : 'recovery'}_${phase}_failed`;
   const outcomes = await Promise.allSettled([
-    diagnosticStore.recordEvent('error', 'focus', 'recovery_failed', { reason, error }),
+    diagnosticStore.recordEvent('error', 'focus', code, { reason, phase, error }),
     telemetryStore.recordError({
       source: 'focus',
-      code: 'recovery_failed',
-      operation: 'recover_session',
+      code,
+      operation: scheduled ? 'scheduled_alarm' : 'recover_session',
       errorName: error?.name || 'Error'
     })
   ]);
@@ -630,8 +635,8 @@ function getAlarm(name) {
   });
 }
 
-async function ensureFocusCompletionAlarm(endTime, shouldContinue) {
-  const existing = await getAlarm(FOCUS_COMPLETION_ALARM);
+async function ensureFocusCompletionAlarm(endTime, shouldContinue, step) {
+  const existing = await step('alarm_read', () => getAlarm(FOCUS_COMPLETION_ALARM));
   if (!shouldContinue()) return false;
 
   const scheduledTime = Number(existing?.scheduledTime ?? existing?.when);
@@ -639,7 +644,7 @@ async function ensureFocusCompletionAlarm(endTime, shouldContinue) {
     return false;
   }
 
-  await chrome.alarms.create(FOCUS_COMPLETION_ALARM, { when: endTime });
+  await step('alarm_create', () => chrome.alarms.create(FOCUS_COMPLETION_ALARM, { when: endTime }));
   return true;
 }
 
@@ -660,12 +665,13 @@ async function reconcileStoredFocusSession(reason, {
   expectedEndTime = null,
   allowEarlyCompletion = false,
   rearmFuture = true,
-  invalidateGeneration = true
+  invalidateGeneration = true,
+  step = (_phase, operation) => operation()
 } = {}) {
   const shouldContinue = () => transitionGeneration === focusSessionTransitionGeneration;
   if (!shouldContinue()) return { status: 'superseded' };
 
-  const result = await chrome.storage.local.get(['focusSession']);
+  const result = await step('state_read', () => chrome.storage.local.get(['focusSession']));
   if (!shouldContinue()) return { status: 'superseded' };
 
   const focusSession = result.focusSession;
@@ -689,7 +695,7 @@ async function reconcileStoredFocusSession(reason, {
     (allowEarlyCompletion ? now + 1000 >= endTime : now >= endTime);
   if (!completionDue) {
     if (rearmFuture) {
-      const alarmCreated = await ensureFocusCompletionAlarm(endTime, shouldContinue);
+      const alarmCreated = await ensureFocusCompletionAlarm(endTime, shouldContinue, step);
       if (!shouldContinue()) return { status: 'superseded' };
       return { status: 'active', alarmCreated };
     }
@@ -702,7 +708,7 @@ async function reconcileStoredFocusSession(reason, {
   );
   if (!shouldContinue()) return { status: 'superseded' };
 
-  await chrome.storage.local.set({ focusSession: { ...INACTIVE_FOCUS_SESSION } });
+  await step('state_write', () => chrome.storage.local.set({ focusSession: { ...INACTIVE_FOCUS_SESSION } }));
   if (invalidateGeneration && shouldContinue()) {
     focusSessionTransitionGeneration += 1;
   }
@@ -757,16 +763,18 @@ async function reconcileStoredFocusSession(reason, {
 }
 
 async function reconcileFocusSession(reason, options = {}) {
+  const trace = createFocusRecoveryTrace();
   const transitionGeneration = focusSessionTransitionGeneration;
   try {
     return await enqueueFocusSessionTransition(() => reconcileStoredFocusSession(reason, {
       ...options,
       transitionGeneration,
-      invalidateGeneration: true
+      invalidateGeneration: true,
+      step: trace.step
     }));
   } catch (error) {
     logger.error(`Focus Session recovery failed (${reason}):`, error);
-    await reportFocusRecoveryFailure(reason, error);
+    await reportFocusRecoveryFailure(reason, error, { phase: trace.getPhase(error) });
     return { status: 'failed', error: error.message };
   }
 }
@@ -837,7 +845,7 @@ async function activateFocusSession(request, transitionGeneration, scheduledEndT
     };
   }
 
-  const previousFocusSession = await getFocusSessionState();
+  const previousFocusSession = await getFocusSessionForProtection();
   const previousFocusAlarm = previousFocusSession.focusActive
     ? { scheduledTime: previousFocusSession.focusEndTime }
     : null;
@@ -912,7 +920,7 @@ const focusScheduleController = createFocusScheduleController({
   storage: chrome.storage.local,
   alarms: chrome.alarms,
   getAccess: getFocusAccess,
-  getSession: getFocusSessionState,
+  getSession: getFocusSessionForProtection,
   runExclusive: enqueueFocusSessionTransition,
   startSession: (occurrence, transitionGeneration, isCurrentWindow) => activateFocusSession({
     durationMinutes: (occurrence.endTime - occurrence.startTime) / 60_000,
@@ -920,16 +928,19 @@ const focusScheduleController = createFocusScheduleController({
   }, transitionGeneration, occurrence.endTime, isCurrentWindow)
 });
 
-async function reconcileScheduledFocus() {
+async function reconcileScheduledFocus(reason = 'worker_load') {
+  const trace = createFocusRecoveryTrace();
   const generation = focusSessionTransitionGeneration;
+  let failurePhase;
   try {
-    const result = await focusScheduleController.reconcile(generation);
+    const result = await focusScheduleController.reconcile(generation, trace.step);
     if (result?.success === false) {
+      failurePhase = 'activation';
       throw Object.assign(new Error(result.error), { code: result.code });
     }
   } catch (error) {
     logger.error('Scheduled Focus Session failed:', error);
-    await reportFocusRecoveryFailure('scheduled_focus', error);
+    await reportFocusRecoveryFailure(reason, error, { phase: failurePhase || trace.getPhase(error), scheduled: true });
   }
 }
 
@@ -1575,7 +1586,7 @@ async function initializeExtension(details) {
   await SettingsManager.getSettings();
   await StatisticsManager.getStatistics();
   await reconcileFocusSession(details.reason || 'initialize');
-  await reconcileScheduledFocus();
+  await reconcileScheduledFocus(details.reason || 'initialize');
   await showUpdates(details);
   
   try {
@@ -1835,10 +1846,14 @@ chrome.runtime.onInstalled.addListener(details =>
       await step('permissions', () =>
         checkAndRequestPermissions(details, { notifyIfMissing: true })
       );
-      await step('open_install_page', () => chrome.tabs.create({
-        url: createInstallURL(),
-        active: true
-      }));
+      await openInstallPage({
+        runtimeApi: chrome.runtime,
+        tabsApi: chrome.tabs,
+        step,
+        onFallback: error => diagnosticStore.recordEvent('warn', 'worker', 'install_options_fallback', {
+          errorName: error instanceof TypeError ? 'TypeError' : 'Error'
+        })
+      });
     } else if (details.reason === 'update') {
       logger.log("This is an update. Checking permissions...");
       await step('initialize', () => initializeExtension(details));
@@ -2375,7 +2390,7 @@ chrome.alarms.onAlarm.addListener(alarm =>
   
   if (alarm.name === FOCUS_SCHEDULE_ALARM) {
     await reconcileFocusSession('scheduled_focus_alarm');
-    await reconcileScheduledFocus();
+    await reconcileScheduledFocus('scheduled_focus_alarm');
   }
 
   if (alarm.name === 'end_focus_session') {
@@ -2394,7 +2409,7 @@ chrome.alarms.onAlarm.addListener(alarm =>
 
   if (alarm.name === 'update_scheduled_rules') {
     await reconcileFocusSession('minute_alarm');
-    await reconcileScheduledFocus();
+    await reconcileScheduledFocus('minute_alarm');
     await runAsyncHandler(ASYNC_HANDLER_OPERATIONS.DAILY_LIMIT_ALARM, async () => {
       if (await recoverPendingDailyUsage('minute_alarm')) {
         await dailyLimitTracker.sample('minute_alarm');
