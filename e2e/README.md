@@ -1,26 +1,17 @@
-# BlockDistraction Chromium E2E **5.6.8**
+# BlockDistraction Chromium E2E **5.6.9**
 
-## Current upgrade matrix
+## Current release and upgrade matrix
 
-The upgrade group retains 5.4.14 and targets actual 5.6.7 → 5.6.8.
-The recent source is release commit `a84aade29f159b0f597281ac0b58eb6f517d9c53`,
-matching the previously packaged 5.6.7 runtime.
-Both cases check saved budgets, fresh Options before retained-tab reload,
-the original Focus deadline and their existing Stop/completion-sound controls.
-Native rule definitions are preserved while current priorities follow the
-explicit longest-filter / first-in-set policy.
+Scenario 90 checks production Whitelist validation, canonical duplicate rejection,
+unrelated query text, native blocking and unchanged Focus path/port scope.
+Inventory is **91 = 75 core + 13 lifecycle + 1 overdue + 2 upgrade**;
+macOS smoke remains 24 per architecture.
 
-Scenario 89 checks native network and SPA redirects, both stored orders,
-a real browser restart and Focus profile preference. Inventory remains
-**89 = 74 core + 12 lifecycle + 1 overdue + 2 upgrade**;
-macOS smoke remains 24 per architecture. See [preparation and acceptance](version-upgrade.md).
-
-Scenario 24 also covers the real Settings reload with a retained schedule fragment,
-followed by manual disclosure. The scenario inventory is unchanged.
-
-Focus protection reads now fail without publishing an inactive session. Worker
-regressions cover retained DNR, manual Hardcore priority, rollback snapshots and
-fixed recovery failure phases. The native scenario inventory remains unchanged.
+The upgrade group retains 5.4.14 and targets actual 5.6.8 → 5.6.9.
+The recent source is release commit `27df3b599dc8b63c391acaa0ed50463ba5694d89`.
+Both cases retain saved budgets, fresh Options readiness, the original Focus
+session deadline and their Stop/completion-sound controls. Existing saved
+Whitelist rows are not rewritten. See [preparation and acceptance](version-upgrade.md).
 
 ## macOS smoke CI
 
