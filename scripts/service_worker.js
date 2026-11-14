@@ -53,6 +53,7 @@ import { createFocusScheduleController } from '../schedules/focusScheduleControl
 import { BUILD_ID } from '../utils/buildInfo.js';
 import { createSoundService } from '../utils/soundService.js';
 import { createFocusSoundController, isSoundPreviewSender } from '../utils/focusSound.js';
+import { createDailyLimitFocusPolicy } from '../utils/dailyLimitFocusPolicy.js';
 
 const logger = new Logger('Worker');
 
@@ -392,9 +393,15 @@ const spaNavigationEnforcer = createSpaNavigationEnforcer({
   logger
 });
 
+const requiresDailyLimitWindowFocus = createDailyLimitFocusPolicy({
+  runtimeApi: chrome.runtime, navigatorRef: globalThis.navigator || {}
+});
+
 const dailyLimitTracker = createDailyLimitTracker({
   tabsApi: chrome.tabs,
   windowsApi: chrome.windows,
+  requiresWindowFocus: requiresDailyLimitWindowFocus,
+  sessionStorage: chrome.storage.session,
   scriptingApi: chrome.scripting,
   alarmsApi: chrome.alarms,
   getRules: () => rulesManager.getRules(),
@@ -1472,27 +1479,34 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 });
 
 let windowFocusEventSequence = 0;
-chrome.windows?.onFocusChanged?.addListener((windowId) => {
-  const sequence = ++windowFocusEventSequence;
-  return runAsyncHandler(ASYNC_HANDLER_OPERATIONS.WINDOW_FOCUS_CHANGED, async () => {
-    if (windowId === chrome.windows.WINDOW_ID_NONE) {
-      // NONE can arrive after another window gained focus. Reconcile the
-      // current native state instead of leaving its visible segment paused.
-      let windows;
-      try {
-        windows = await chrome.windows.getAll();
-      } catch (error) {
-        logger.info('Daily limit native window focus query failed:', error);
+chrome.windows?.onFocusChanged?.addListener(windowId => {
+  const handleNativeFocus = () => {
+    const sequence = ++windowFocusEventSequence;
+    return runAsyncHandler(ASYNC_HANDLER_OPERATIONS.WINDOW_FOCUS_CHANGED, async () => {
+      if (windowId === chrome.windows.WINDOW_ID_NONE) {
+        // NONE can arrive after another window gained focus. Reconcile the
+        // current native state instead of leaving its visible segment paused.
+        let windows;
+        try {
+          windows = await chrome.windows.getAll();
+        } catch (error) {
+          logger.info('Daily limit native window focus query failed:', error);
+        }
+        // An awaited reply must not pause/resume after a newer focus event.
+        if (sequence !== windowFocusEventSequence) return;
+        if (!Array.isArray(windows) || !windows.some(window => window.focused === true)) {
+          await dailyLimitTracker.pause('window_focus_lost');
+          return;
+        }
       }
-      // An awaited reply must not pause/resume after a newer focus event.
-      if (sequence !== windowFocusEventSequence) return;
-      if (!Array.isArray(windows) || !windows.some(window => window.focused === true)) {
-        await dailyLimitTracker.pause('window_focus_lost');
-        return;
-      }
-    }
-    await dailyLimitTracker.sample('window_focus_gained');
-  });
+      await dailyLimitTracker.sample('window_focus_gained');
+    });
+  };
+  const required = requiresDailyLimitWindowFocus();
+  // Android is driven by visibility transitions; desktop focus events retain
+  // synchronous invalidation once the cached platform policy is known.
+  if (typeof required === 'boolean') return required ? handleNativeFocus() : undefined;
+  return required.then(value => value ? handleNativeFocus() : undefined);
 });
 
 chrome.tabs.onCreated.addListener((tab) =>
@@ -1816,7 +1830,8 @@ async function createDiagnosticReport() {
         !rule.isWhitelist && getRuleAssignments(rule).some(assignment => assignment.blockingMode === BLOCKING_MODE_DAILY_LIMIT)
       ).length,
       usageEntries: Object.keys(dailyUsage || {}).length,
-      tracker: dailyLimitTracker.getDebugState()
+      tracker: { ...dailyLimitTracker.getDebugState(),
+        lastVisibleSample: await dailyLimitTracker.getLastVisibleSample() }
     },
     license: {
       isPro: credentials.isPro === true,
