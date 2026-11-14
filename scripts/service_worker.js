@@ -394,6 +394,7 @@ const spaNavigationEnforcer = createSpaNavigationEnforcer({
 
 const dailyLimitTracker = createDailyLimitTracker({
   tabsApi: chrome.tabs,
+  windowsApi: chrome.windows,
   scriptingApi: chrome.scripting,
   alarmsApi: chrome.alarms,
   getRules: () => rulesManager.getRules(),
@@ -401,7 +402,7 @@ const dailyLimitTracker = createDailyLimitTracker({
   getFocusSessionState: getFocusSessionForProtection,
   dailyLimitManager,
   dnrSynchronizer,
-  getStateGeneration: () => blockingDecisionGeneration,
+  getStateGeneration: () => `${blockingDecisionGeneration}:${windowFocusEventSequence}`,
   logger
 });
 
