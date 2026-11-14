@@ -1,14 +1,17 @@
 # Chromium E2E groups
 
-## Current release target - 5.6.9
+## Current release target - 5.6.10
 
-Inventory: **91 = 75 core + 13 lifecycle + 1 overdue + 2 upgrade**.
-The recent case targets actual 5.6.8 → 5.6.9; the 5.4.14 case is retained.
+Inventory: **92 = 76 core + 13 lifecycle + 1 overdue + 2 upgrade**.
+The recent case targets actual 5.6.9 → 5.6.10; the 5.4.14 case is retained.
 URL identity and precedence scenarios 88/89 belong to core. Both macOS smoke
 sets remain 24 scenarios each. Serial execution, zero retries, deadlines and
 the required native matrix gate are unchanged. Earlier inventories follow.
 
 Scenario 90 checks rejected Whitelist inputs and aliases, unrelated query text, native blocking, and retained Whitelist Focus path/port behavior.
+
+Scenario 91 checks the four-character minimum through the real worker and Options
+editor, rejected-write atomicity, and continued use of saved short targets and budgets.
 
 ## Current upgrade matrix — 5.6.2
 
