@@ -1251,6 +1251,32 @@ test('Focus Session emits one deterministic DNR rule when profiles use different
   assert.equal(rules[0].action.redirect.url, 'https://example.com/focus');
 });
 
+test('Focus priority fixture activates its disabled budget target while deduplicating aliases', async () => {
+  const assignment = (listId, extra = {}) => ({ listId, disabledByUser: false,
+    blockingMode: 'always', schedule: null, dailyLimit: null, ...extra });
+  const storedRules = [
+    makeStoredRule({ id: 895, blockURL: 'precedence.bd-e2e.test/team',
+      assignments: [assignment('general')] }),
+    makeStoredRule({ id: 896, blockURL: 'https://www.precedence.bd-e2e.test:443/team/',
+      assignments: [assignment('list-1')] }),
+    makeStoredRule({ id: 897, blockURL: 'precedence.bd-e2e.test/team/item',
+      assignments: [assignment('list-2')] }),
+    makeStoredRule({ id: 890, blockURL: 'priority-budget.bd-e2e.test',
+      assignments: [assignment('general', { disabledByUser: true,
+        blockingMode: 'daily_limit', dailyLimit: { minutes: 3 } })] })
+  ];
+  for (const [focusActive, expected] of [[true, [890, 896, 897]], [false, [896]]]) {
+    const harness = createHarness({ storedRules, focusActive, activeRuleListId: 'list-1',
+      dailyUsage: { '890:general': 40 }, ruleLists: [
+        { id: 'general', name: 'General', disabledCategories: [] },
+        { id: 'list-1', name: 'Study', disabledCategories: [] },
+        { id: 'list-2', name: 'Work', disabledCategories: [] }
+      ] });
+    await harness.synchronizer.requestSync();
+    assert.deepEqual(harness.getDynamicRules().map(rule => rule.id).sort((a, b) => a - b), expected);
+  }
+});
+
 test('Free Focus activates only General assignments even when a custom list remains selected', async () => {
   const harness = createHarness({
     storedRules: [

@@ -830,9 +830,12 @@ urlSafetyScenarios.push({
     await e.reconcile(page);
     assert.equal((await message(page, { type: 'start_focus_session', duration: 5, focusMode: 'blacklist' })).success, true);
     try {
-      await poll(() => e.state(), state => state.dnr.length === 2 &&
-        state.dnr.some(rule => rule.id === 896) && state.dnr.some(rule => rule.id === 897),
-      'Focus deduplicates aliases before assigning priorities');
+      // Focus deliberately activates disabled targets too, including the
+      // independent budget fixture. Deduplicate only the overlapping aliases.
+      const focusIds = [budgetRule.id, 896, 897];
+      await poll(() => e.state(), state => state.dnr.length === focusIds.length &&
+        focusIds.every(id => state.dnr.some(rule => rule.id === id)),
+      'Focus deduplicates aliases and activates the independent budget target');
       await prove('http://precedence.bd-e2e.test/team/item/next', 897);
       await prove('http://precedence.bd-e2e.test/team/other', 896, false);
     } finally {
