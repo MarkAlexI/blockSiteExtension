@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from './fixtures.mjs';
 import { startNativeWindowManager } from './native-window-manager.mjs';
-import { createStartupFixture, startupDailyRule, startupSnapshot, assertStartupBudget, assertStartupDeadline } from './startup-restore.mjs';
+import { createStartupFixture, startupDailyRule, startupSnapshot, assertStartupBudget, assertStartupDeadline, assertStartupFocusAccounting } from './startup-restore.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const stableKeys = ['credentials', 'settings', 'rules', 'ruleLists', 'activeRuleListId',
@@ -124,12 +124,9 @@ test('native startup session restore retains original tabs, foreground budget, b
       assert.equal(evidence.focusAfter.tabs.filter(tab => tab.url === urls.control).length, 1);
       identity(evidence.focusBefore, evidence.focusAfter, urls.control, evidence.focusCycle);
       assert.deepEqual(evidence.focusAfter.focusSession, evidence.focusBefore.focusSession, 'Hardcore Focus retains its exact original deadline');
-      assert.deepEqual(evidence.focusAfter.dailyRuleUsage.usageSeconds, evidence.focusBefore.dailyRuleUsage.usageSeconds);
-      assert.equal(evidence.focusAfter.dailyRuleUsage.lastSample, null, 'Focus cannot revive a foreground segment from the closed browser');
-      assert.deepEqual(evidence.focusAfter.pendingDailyUsageRemaps, []);
+      assertStartupFocusAccounting(evidence.focusBefore, evidence.focusAfter);
       assert.equal(evidence.focusAfter.alarms.find(alarm => alarm.name === 'end_focus_session')?.scheduledTime,
         evidence.focusBefore.focusSession.focusEndTime, 'native completion alarm restored');
-      assert.equal(evidence.focusAfter.alarms.some(alarm => alarm.name === 'daily_limit_deadline'), false);
       await e.assertBlocked(urls.active, 'focus');
       const finalOptions = await e.openOptions(); const finalPopup = await e.openPopup();
       await expect(finalOptions.locator('#focus-session-banner')).toBeVisible();

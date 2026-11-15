@@ -98,3 +98,16 @@ export function assertStartupDeadline(state, limitSeconds = 180) {
     (limitSeconds - state.dailyRuleUsage.usageSeconds['21:general']) * 1000;
   assert.ok(Math.abs(deadline.scheduledTime - expected) < 1000, 'deadline retains the current remaining budget');
 }
+
+export function assertStartupFocusAccounting(before, after) {
+  assert.deepEqual(after.dailyRuleUsage.usageSeconds, before.dailyRuleUsage.usageSeconds,
+    'Focus startup preserves every spent budget');
+  const sample = after.dailyRuleUsage.lastSample;
+  // Both representations are inactive. A retained empty sample cannot charge
+  // any assignment, even if onStartup has not yet replaced it with null.
+  assert.ok(sample === null || (sample && Array.isArray(sample.assignmentKeys) && sample.assignmentKeys.length === 0),
+    'Focus cannot revive a foreground segment from the closed browser');
+  assert.deepEqual(after.pendingDailyUsageRemaps, []);
+  assert.equal(after.alarms.some(alarm => alarm.name === 'daily_limit_deadline'), false,
+    'Focus startup cannot arm a Daily Limit deadline');
+}

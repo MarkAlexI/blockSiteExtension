@@ -769,6 +769,13 @@ urlSafetyScenarios.push({
     const aliases = [row(895, 'precedence.bd-e2e.test/team', 'general'),
       row(896, 'https://www.precedence.bd-e2e.test:443/team/', 'profile', 'list-1'),
       row(897, 'precedence.bd-e2e.test/team/item', 'focused-narrow', 'list-2')];
+    // Keep one real, disabled Daily Limit assignment and its exact spent
+    // budget throughout setup. Replacing raw usage keys between phases can
+    // race an in-flight worker sample carrying the previous phase's counters.
+    const budgetRule = { id: 890, blockURL: 'priority-budget.bd-e2e.test', redirectURL: '',
+      category: 'social', isWhitelist: false, assignments: [{ ...assignment('general'),
+        disabledByUser: true, blockingMode: 'daily_limit', dailyLimit: { minutes: 3 } }] };
+    const usage = { '890:general': 40 };
     let page;
     const prove = async (target, winnerId, overlapping = true) => {
       const snapshot = await e.state();
@@ -797,12 +804,13 @@ urlSafetyScenarios.push({
       { rules: [first, second], target: '/ab/next', winner: first.id },
       { rules: [second, first], target: '/ab/next', winner: second.id, restart: true }
     ]) {
-      const usage = Object.fromEntries(phase.rules.map(rule => [`${rule.id}:general`, 40]));
-      await e.seed({ pro: true, rules: phase.rules, usage });
+      const rules = [...phase.rules, budgetRule];
+      await e.seed({ pro: true, rules, usage });
       page = await e.openOptions();
       await e.reconcile(page);
       const before = await e.state();
-      assert.deepEqual(before.rules, phase.rules);
+      assert.deepEqual(before.rules, rules);
+      assert.deepEqual(before.dailyRuleUsage.usageSeconds, usage, 'the fixed Daily Limit budget is present before navigation');
       await prove('http://precedence.bd-e2e.test' + phase.target, phase.winner);
       if (phase.restart) {
         const signature = rules => [...rules].sort((left, right) => left.id - right.id);
@@ -816,8 +824,8 @@ urlSafetyScenarios.push({
       assert.deepEqual(after.rules, before.rules);
       assert.deepEqual(after.dailyRuleUsage.usageSeconds, usage);
     }
-    const usage = { '895:general': 40, '896:list-1': 80, '897:list-2': 20 };
-    await e.seed({ pro: true, rules: aliases, usage, active: 'list-1' });
+    const focusRules = [...aliases, budgetRule];
+    await e.seed({ pro: true, rules: focusRules, usage, active: 'list-1' });
     page = await e.openOptions();
     await e.reconcile(page);
     assert.equal((await message(page, { type: 'start_focus_session', duration: 5, focusMode: 'blacklist' })).success, true);
@@ -834,7 +842,7 @@ urlSafetyScenarios.push({
       'stopping Focus restores only the active profile');
     await prove('http://precedence.bd-e2e.test/team/item/next', 896, false);
     const after = await e.state();
-    assert.deepEqual(after.rules, aliases);
+    assert.deepEqual(after.rules, focusRules);
     assert.deepEqual(after.dailyRuleUsage.usageSeconds, usage);
   }
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { runInNewContext } from 'node:vm';
-import { assertStartupBudget, assertStartupDeadline, createStartupFixture, startupDailyRule, startupSnapshot } from '../e2e/startup-restore.mjs';
+import { assertStartupBudget, assertStartupDeadline, assertStartupFocusAccounting, createStartupFixture, startupDailyRule, startupSnapshot } from '../e2e/startup-restore.mjs';
 import { doesUrlMatchBlockRule } from '../rules/urlRuleMatcher.js';
 
 function evidence() {
@@ -43,6 +43,37 @@ test('worker-only restart and forced termination cannot claim startup session re
 test('startup evidence rejects an old deadline that grants a fresh budget', () => {
   const { after } = evidence(); after.alarms[0].scheduledTime = after.at + 180000;
   assert.throws(() => assertStartupDeadline(after), /remaining budget/);
+});
+
+test('Focus startup evidence accepts null and a retained empty sample without spending budget', () => {
+  const { before } = evidence();
+  for (const lastSample of [null, { timestamp: 1000, assignmentKeys: [] }]) {
+    const after = { dailyRuleUsage: { usageSeconds: { ...before.dailyRuleUsage.usageSeconds }, lastSample },
+      pendingDailyUsageRemaps: [], alarms: [] };
+    assertStartupFocusAccounting(before, after);
+  }
+});
+
+test('Focus startup evidence still rejects revived assignments and malformed samples', () => {
+  const { before } = evidence();
+  for (const lastSample of [{ timestamp: 1000, assignmentKeys: ['21:general'] }, {}, undefined]) {
+    const after = { dailyRuleUsage: { usageSeconds: { ...before.dailyRuleUsage.usageSeconds }, lastSample },
+      pendingDailyUsageRemaps: [], alarms: [] };
+    assert.throws(() => assertStartupFocusAccounting(before, after), /foreground segment/);
+  }
+});
+
+test('Focus startup evidence still rejects changed budgets, pending remaps and active deadlines', () => {
+  const { before } = evidence();
+  for (const change of [after => { after.dailyRuleUsage.usageSeconds['21:general'] = 0; },
+    after => { after.dailyRuleUsage.usageSeconds['23:general']++; },
+    after => { after.pendingDailyUsageRemaps = [{ oldRuleId: 21, newRuleId: 24 }]; },
+    after => { after.alarms.push({ name: 'daily_limit_deadline' }); }]) {
+    const after = { dailyRuleUsage: { usageSeconds: { ...before.dailyRuleUsage.usageSeconds }, lastSample: null },
+      pendingDailyUsageRemaps: [], alarms: [] };
+    change(after);
+    assert.throws(() => assertStartupFocusAccounting(before, after));
+  }
 });
 
 test('native startup HTTP fixture produces new uncached documents and accepts only its owned URLs', async t => {
