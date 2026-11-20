@@ -823,7 +823,7 @@ class PopupPage {
       this.syncFocusPending();
       const action = this.focusAction;
       if (needsFocus || (action?.ownsFocus && !action.moved && (focused === action.anchor || focused === document.body))) {
-        this.restoreFocusSessionFocus(active ? (isHardcore ? this.focusActiveLabel : this.stopFocusBtn) : this.startFocusBtn);
+        this.restoreFocusSessionFocus(active ? (isHardcore ? this.focusActiveLabel : this.stopFocusBtn) : (this.pomodoro?.cycle ? this.pomodoro.next : this.startFocusBtn));
       }
       if (!action && previous) this.announceFocusTransition(previous);
       return true;
@@ -922,6 +922,7 @@ class PopupPage {
   }
 
   async stopFocusSession() {
+    if (this.pomodoro?.cycle) return this.pomodoro.act('stop_pomodoro', 'stop');
     await this.runFocusAction('stop', { type: 'stop_focus_session' });
   }
 
@@ -946,7 +947,7 @@ class PopupPage {
     }
     if (this.focusDisposed) return;
     if (response?.success !== true || !refreshed) {
-      customAlert(t(response?.code === 'pro_required' ? 'prorequired' : response?.code === 'invalid_focus_duration' ? 'focussessioninvalidduration' : response?.code === 'invalid_pomodoro' ? 'pomodoro_invalid' : response?.code === 'pomodoro_changed' ? 'pomodoro_changed' : 'errorupdatingrules'));
+      customAlert(t(response?.code === 'hardcore_active' ? (this.pomodoro?.cycle ? 'pomodoro_hardcore_note' : 'focussessionhardcore') : response?.code === 'pro_required' ? 'prorequired' : response?.code === 'invalid_focus_duration' ? 'focussessioninvalidduration' : response?.code === 'invalid_pomodoro' ? 'pomodoro_invalid' : response?.code === 'pomodoro_changed' ? 'pomodoro_changed' : 'errorupdatingrules'));
     } else if (response.syncPending === true) customAlert(t('ruleschangessavedpending'));
     else this.announceFocusTransition(previous);
   }
@@ -990,7 +991,9 @@ class PopupPage {
   }
 
   handleRulesMutationError(error, fallbackKey = 'erroraddingrule', row = null) {
-    if (error.code === 'validation_failed') {
+    if (error.code === 'hardcore_active') {
+      customAlert(t('pomodoro_hardcore_note'));
+    } else if (error.code === 'validation_failed') {
       this.rulesUI.showValidationErrors(error.validationErrors || [], row);
     } else if (row?._ruleEditorFeedback && ['rule_already_exists', 'conflict_blacklist', 'conflict_whitelist', 'redundant_whitelist'].includes(error.code)) {
       this.rulesUI.showValidationErrors([error.code], row, { rule_already_exists: t('alertruleexist') });

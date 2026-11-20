@@ -15,7 +15,7 @@ import { openInstallPage } from '../utils/createInstallURL.js';
 import { shouldSkipSync } from '../utils/shouldSkipSync.js';
 import { isBlockedURL } from './isBlockedURL.js';
 import { getFocusSessionState, createFocusRecoveryTrace } from '../utils/focusSession.js';
-import { POMODORO_KEY, POMODORO_ALARM, POMODORO_AUTO_GRACE_MS, normalizePomodoroConfig, readPomodoro, startPomodoro, matchesPomodoroWork, completePomodoroWork, nextPomodoroWork, readyPomodoro } from '../utils/focusSession.js';
+import { POMODORO_KEY, POMODORO_ALARM, POMODORO_LOCK_ALARM, POMODORO_AUTO_GRACE_MS, hardenPomodoro, isPomodoroHardcoreLocked, normalizePomodoroConfig, readPomodoro, startPomodoro, matchesPomodoroWork, completePomodoroWork, nextPomodoroWork, readyPomodoro } from '../utils/focusSession.js';
 import { isUrlInWhitelist } from '../pro/isUrlInWhitelist.js';
 import { createDnrSynchronizer, getDnrSyncFailureCode } from './dnrSynchronizer.js';
 import { createSpaNavigationEnforcer } from './spaNavigationEnforcer.js';
@@ -583,7 +583,11 @@ function enqueueFocusSessionTransition(task) {
 }
 
 function enqueueRulesTransition(task) {
-  return enqueueStateTransition(() => {
+  return enqueueStateTransition(async () => {
+    const cycle = await readCurrentPomodoro();
+    if (isPomodoroHardcoreLocked(cycle)) {
+      throw Object.assign(new Error('Hardcore Pomodoro is locked'), { code: 'hardcore_active' });
+    }
     invalidateBlockingDecisions();
     return task();
   });
@@ -760,6 +764,11 @@ async function reconcileStoredFocusSession(reason, {
     return { status: 'invalid_state_recovered' };
   }
 
+  // A recovery interval clipped by the fixed Hardcore deadline is not a full work interval.
+  if (cycleWork && cycle.isHardcore && Number.isFinite(cycle.workStartedAt) &&
+      endTime - cycle.workStartedAt < cycle.workMinutes * 60_000) {
+    return { status: 'partial_pomodoro_finished' };
+  }
   const outcomes = await Promise.allSettled([
     StatisticsManager.recordFocusSession(),
     diagnosticStore.recordEvent('info', 'focus', 'session_completed', { reason }),
@@ -773,7 +782,8 @@ async function reconcileStoredFocusSession(reason, {
   // Feedback is best effort after the durable completion. Audio/notification
   // failures and slow platform replies must not hold the state mutation queue.
   void runFocusCompletionTask('completion notification', () => showFocusCompletionNotification(
-    cycleWork ? (nextCycle ? 'pomodoro_break' : 'pomodoro_complete') : 'focussessionended'));
+    cycleWork ? (nextCycle ? (nextCycle.phase === 'ready' ? 'pomodoro_ready' : 'pomodoro_break') :
+      cycle.completedRounds + 1 >= cycle.rounds ? 'pomodoro_complete' : 'focussessionended') : 'focussessionended'));
   void runFocusCompletionTask('completion sound', () => focusSound.complete(endTime));
   return { status: 'completed' };
 }
@@ -835,7 +845,8 @@ async function activateFocusSession(request, transitionGeneration, scheduledEndT
     return { success: false, error: 'pro_required', code: 'pro_required' };
   }
 
-  const endTime = scheduledEndTime ?? (Date.now() + durationMinutes * 60 * 1000);
+  const endTime = cycle?.isHardcore ? cycle.phaseEndTime :
+    scheduledEndTime ?? (Date.now() + durationMinutes * 60 * 1000);
   if (Date.now() >= endTime) return false;
   const nextFocusSession = {
     focusActive: true,
@@ -880,6 +891,7 @@ async function activateFocusSession(request, transitionGeneration, scheduledEndT
     if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
     await chrome.alarms.create('end_focus_session', { when: endTime });
+    if (cycle) await armPomodoro(cycle);
     await dailyLimitTracker.sample('focus_start_after');
     if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
@@ -909,6 +921,7 @@ async function activateFocusSession(request, transitionGeneration, scheduledEndT
     }
     if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
+    if (cycle !== undefined) await armPomodoro(readPomodoro(previousCycle));
     await dailyLimitTracker.sample('focus_start_rollback');
     if (transitionGeneration !== focusSessionTransitionGeneration) return false;
     const restored = await dnrSynchronizer.requestSync();
@@ -942,12 +955,29 @@ async function activateFocusSession(request, transitionGeneration, scheduledEndT
 async function preserveActiveFocus(focus, generation) {
   const current = () => generation === focusSessionTransitionGeneration;
   await ensureFocusCompletionAlarm(focus.focusEndTime, current, (_phase, operation) => operation());
+  if (current()) await armPomodoro(await readCurrentPomodoro());
   if (!current()) return;
   await dnrSynchronizer.requestSync();
   if (focus.focusMode === 'whitelist' && current()) await checkAllTabsAgainstWhitelist(current);
 }
 
+async function readCurrentPomodoro() {
+  const stored = (await chrome.storage.local.get(POMODORO_KEY))[POMODORO_KEY];
+  const cycle = readPomodoro(stored);
+  const current = hardenPomodoro(cycle);
+  if (current && JSON.stringify(current) !== JSON.stringify(cycle)) {
+    await chrome.storage.local.set({ [POMODORO_KEY]: current });
+  }
+  return current;
+}
+
 async function armPomodoro(cycle) {
+  if (isPomodoroHardcoreLocked(cycle)) {
+    const deadline = await getAlarm(POMODORO_LOCK_ALARM);
+    if (Math.abs(Number(deadline?.scheduledTime ?? deadline?.when ?? 0) - cycle.hardcoreEndTime) > 1000) {
+      await chrome.alarms.create(POMODORO_LOCK_ALARM, { when: cycle.hardcoreEndTime });
+    }
+  } else await chrome.alarms.clear(POMODORO_LOCK_ALARM);
   if (cycle?.phase !== 'break') {
     await chrome.alarms.clear(POMODORO_ALARM);
     return;
@@ -958,8 +988,9 @@ async function armPomodoro(cycle) {
   }
 }
 
-async function continuePomodoroStored(cycle, generation) {
-  const next = nextPomodoroWork(cycle, Date.now());
+async function continuePomodoroStored(cycle, generation, scheduledStart = null) {
+  if (cycle.isHardcore && Date.now() >= cycle.hardcoreEndTime) return { success: false, code: 'pomodoro_changed' };
+  const next = nextPomodoroWork(cycle, cycle.isHardcore && scheduledStart !== null ? scheduledStart : Date.now());
   const result = await activateFocusSession({ durationMinutes: next.workMinutes,
     isHardcore: next.isHardcore, focusMode: next.focusMode }, generation, null, null, next);
   if (result === true) await chrome.alarms.clear(POMODORO_ALARM);
@@ -973,14 +1004,27 @@ async function reconcilePomodoro(reason, expectedEndTime = null) {
       if (generation !== focusSessionTransitionGeneration) return;
       const stored = await chrome.storage.local.get([POMODORO_KEY, 'focusSession']);
       if (generation !== focusSessionTransitionGeneration) return;
-      const cycle = readPomodoro(stored[POMODORO_KEY]);
+      const cycle = await readCurrentPomodoro();
       if (!cycle) { await armPomodoro(null); return; }
+      if (cycle.isHardcore && Date.now() >= cycle.hardcoreEndTime) {
+        // Reconcile only the work that was actually started; never replay later rounds.
+        if (stored.focusSession?.pomodoroId === cycle.id) {
+          await reconcileStoredFocusSession('pomodoro_deadline', {
+            transitionGeneration: generation, invalidateGeneration: false
+          });
+        }
+        if (generation !== focusSessionTransitionGeneration) return;
+        await chrome.storage.local.set({ [POMODORO_KEY]: null });
+        await armPomodoro(null);
+        return;
+      }
+
       if (cycle.phase === 'work') {
         // A partial or corrupted state must not strand an invisible cycle.
         if (!matchesPomodoroWork(cycle, stored.focusSession)) {
-          await chrome.storage.local.set({ [POMODORO_KEY]: null });
+          await chrome.storage.local.set({ [POMODORO_KEY]: isPomodoroHardcoreLocked(cycle) ? readyPomodoro(cycle) : null });
         }
-        await armPomodoro(null);
+        await armPomodoro(cycle);
         return;
       }
       if (cycle.phase !== 'break' || Date.now() < cycle.phaseEndTime) {
@@ -1000,7 +1044,7 @@ async function reconcilePomodoro(reason, expectedEndTime = null) {
         if (!access.isPro && !access.isLegacyUser) {
           await chrome.storage.local.set({ [POMODORO_KEY]: { ...ready, autoContinue: false } });
         } else if (Date.now() - cycle.phaseEndTime <= POMODORO_AUTO_GRACE_MS) {
-          await continuePomodoroStored(ready, generation);
+          await continuePomodoroStored(ready, generation, cycle.phaseEndTime);
           return;
         }
       }
@@ -1455,6 +1499,13 @@ async function restoreFreeFocusAccess(
     const access = await ProManager.getAccess();
     if (!shouldContinue() || access.isPro || access.isLegacyUser) return false;
 
+    const cycle = await readCurrentPomodoro();
+    if (cycle?.isHardcore && shouldContinue()) {
+      const { hardcoreEndTime, workStartedAt, ...ordinary } = cycle;
+      const downgraded = { ...ordinary, isHardcore: false, autoContinue: false };
+      await chrome.storage.local.set({ [POMODORO_KEY]: downgraded });
+      await armPomodoro(downgraded);
+    }
     const focusSession = await getFocusSessionState();
     if (!focusSession.focusActive || !shouldContinue()) return false;
 
@@ -1476,7 +1527,7 @@ async function restoreFreeFocusAccess(
   return alreadySerialized ? restore() : enqueueFocusSessionTransition(restore);
 }
 
-function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerification = null) {
+function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerification = null, { manual = false } = {}) {
   const transitionGeneration = expectedVerification
     ? proStatusTransitionGeneration
     : ++proStatusTransitionGeneration;
@@ -1485,6 +1536,9 @@ function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerificatio
 
   return enqueueProStatusTransition(async () => {
     try {
+      if (manual && isPomodoroHardcoreLocked(await readCurrentPomodoro())) {
+        throw Object.assign(new Error('Hardcore Pomodoro is locked'), { code: 'hardcore_active' });
+      }
       const previousCredentials = await ProManager.getCredentials({ throwOnError: true });
       if (expectedVerification) {
         const credentials = previousCredentials;
@@ -1539,7 +1593,7 @@ function handleProStatusUpdate(isPro, subscriptionData = {}, expectedVerificatio
       if (!shouldContinue()) return expectedVerification ? null : updatedCredentials;
       return { ...updatedCredentials, ...(syncPending ? { syncPending: true } : {}) };
     } catch (error) {
-      logger.error('Error handling Pro status update:', error);
+      if (error.code !== 'hardcore_active') logger.error('Error handling Pro status update:', error);
       throw error;
     }
   });
@@ -2248,10 +2302,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await handleProStatusUpdate(false, {
           licenseKey: null,
           expiryDate: null
-        });
+        }, null, { manual: true });
         sendResponse({ success: true, isPro: false });
       } catch (error) {
-        sendResponse({ success: false, error: error.message });
+        sendResponse({ success: false, error: error.message, ...(error.code ? { code: error.code } : {}) });
       }
     })();
     return true;
@@ -2348,8 +2402,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const result = await enqueueFocusSessionTransition(async () => {
           if (generation !== focusSessionTransitionGeneration) return false;
           const stored = await chrome.storage.local.get([POMODORO_KEY, 'focusSession']);
-          const cycle = readPomodoro(stored[POMODORO_KEY]);
+          const cycle = await readCurrentPomodoro();
           const focus = stored.focusSession;
+          if (message.type === 'start_pomodoro' && isPomodoroHardcoreLocked(cycle)) {
+            if (focus?.focusActive) await preserveActiveFocus(focus, generation);
+            else await armPomodoro(cycle);
+            return { success: false, code: 'hardcore_active' };
+          }
           if (focus?.focusActive && focus.focusEndTime > Date.now()) {
             await preserveActiveFocus(focus, generation);
             return { success: false, code: focus.isHardcore ? 'hardcore_active' : 'focus_active' };
@@ -2396,7 +2455,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await preserveActiveFocus(stored.focusSession, transitionGeneration);
             return { success: false, code: 'hardcore_active' };
           }
-          if (readPomodoro(stored[POMODORO_KEY])) return { success: false, code: 'pomodoro_changed' };
+          const cycle = await readCurrentPomodoro();
+          if (isPomodoroHardcoreLocked(cycle)) { await armPomodoro(cycle); return { success: false, code: 'hardcore_active' }; }
+          if (cycle) return { success: false, code: 'pomodoro_changed' };
           await focusScheduleController.suppressCurrent();
           return activateFocusSession(request, transitionGeneration);
         });
@@ -2437,7 +2498,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
           const before = await chrome.storage.local.get([POMODORO_KEY, 'focusSession']);
-          const cycle = readPomodoro(before[POMODORO_KEY]);
+          const cycle = await readCurrentPomodoro();
+          if (isPomodoroHardcoreLocked(cycle)) {
+            if (before.focusSession?.focusActive) await preserveActiveFocus(before.focusSession, transitionGeneration);
+            else await armPomodoro(cycle);
+            return { success: false, code: 'hardcore_active' };
+          }
+          if (message.type === 'stop_pomodoro' && message.phase !== undefined &&
+              (cycle?.phase !== message.phase || cycle?.completedRounds !== message.completedRounds)) {
+            return { success: false, code: 'pomodoro_changed' };
+          }
           if (message.type === 'stop_pomodoro' && (!cycle || cycle.id !== message.id)) return { success: false, code: 'pomodoro_changed' };
           if (before.focusSession?.focusActive && before.focusSession.isHardcore && before.focusSession.focusEndTime > Date.now()) {
             const access = await getFocusAccess();
@@ -2454,6 +2524,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (transitionGeneration !== focusSessionTransitionGeneration) return false;
 
           await chrome.storage.local.set({ focusSession: { ...INACTIVE_FOCUS_SESSION }, [POMODORO_KEY]: null });
+          await chrome.alarms.clear(POMODORO_LOCK_ALARM);
           let syncResult;
           try {
             // Finish a committed Stop before the next queued Start can write its state.
@@ -2566,6 +2637,10 @@ chrome.alarms.onAlarm.addListener(alarm =>
     await reconcileScheduledFocus('scheduled_focus_alarm');
   }
 
+  if (alarm.name === POMODORO_LOCK_ALARM) {
+    await reconcilePomodoro('hardcore_deadline');
+    return;
+  }
   if (alarm.name === POMODORO_ALARM) {
     await reconcilePomodoro('alarm', alarm.scheduledTime);
     return;
