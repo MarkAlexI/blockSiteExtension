@@ -1,9 +1,9 @@
 # Chromium E2E groups
 
-## Current release target - 5.6.13
+## Current release target - 5.7.0
 
-Inventory: **92 = 76 core + 13 lifecycle + 1 overdue + 2 upgrade**.
-The recent case targets actual 5.6.9 → 5.6.13; the 5.4.14 case is retained.
+Inventory: **97 = 81 core + 13 lifecycle + 1 overdue + 2 upgrade**.
+The recent case targets actual 5.6.9 → 5.7.0; the 5.4.14 case is retained.
 URL identity and precedence scenarios 88/89 belong to core. Both macOS smoke
 sets remain 24 scenarios each. Serial execution, zero retries, deadlines and
 the required native matrix gate are unchanged. Earlier inventories follow.

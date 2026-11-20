@@ -623,6 +623,12 @@ test('service worker module loads, registers listeners, and serves privacy-safe 
     assert.equal(localStorage.data.focusSession.isHardcore, true);
     assert.equal(createdAlarms.some(alarm => alarm.name === 'end_focus_session'), true);
 
+    const denied = await sendWorkerMessage(messageListener, { type: 'stop_focus_session' });
+    assert.equal(denied.success, false);
+    assert.equal(denied.code, 'hardcore_active');
+    assert.equal(localStorage.data.focusSession.focusActive, true);
+    // Continue the ordinary Stop integration check after the Hardcore control.
+    localStorage.data.focusSession.isHardcore = false;
     const stopped = await sendWorkerMessage(messageListener, { type: 'stop_focus_session' });
     assert.equal(stopped.success, true);
     assert.deepEqual(localStorage.data.focusSession, {

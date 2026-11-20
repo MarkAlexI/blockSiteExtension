@@ -12,6 +12,7 @@ export const testFiles = Object.freeze([
   'readers.spec.mjs',
   'stale.spec.mjs',
   'focus.spec.mjs',
+  'pomodoro.spec.mjs',
   'focus-sound.spec.mjs',
   'popup-native.spec.mjs',
   'calendar.spec.mjs',
