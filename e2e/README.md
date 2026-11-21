@@ -1,13 +1,13 @@
-# BlockDistraction Chromium E2E **5.7.0**
+# BlockDistraction Chromium E2E **5.7.1**
 
 ## Current release and upgrade matrix
 
 Scenario 90 checks production Whitelist validation, canonical duplicate rejection,
 unrelated query text, native blocking and unchanged Focus path/port scope.
-Inventory is **97 = 81 core + 13 lifecycle + 1 overdue + 2 upgrade**;
+Inventory is **103 = 87 core + 13 lifecycle + 1 overdue + 2 upgrade**;
 macOS smoke remains 24 per architecture.
 
-The upgrade group retains 5.4.14 and targets actual 5.6.9 → 5.7.0.
+The upgrade group retains 5.4.14 and targets actual 5.6.9 → 5.7.1.
 The recent source is release commit `a34bc0cc203012a4b18d1740705f87b5e2b69a04`.
 Both cases retain saved budgets, fresh Options readiness, the original Focus
 session deadline and their Stop/completion-sound controls. Existing saved
@@ -19,6 +19,9 @@ editor, rejected-write atomicity, and continued use of saved short targets and b
 Scenarios 93–100 cover Pomodoro work/break transitions, Hardcore, automatic
 continuation, stale actions, native overdue recovery, Free controls and restart.
 Scenario 95 requires a persistent add-on installation on Firefox.
+
+Scenarios 101–102 cover Main menu navigation, the 1200px layout cap, native
+200% tab zoom, narrow translated forms and genuine toolbar popup sizing.
 
 ## macOS smoke CI
 

@@ -30,6 +30,22 @@ body {
   transition: opacity 0.1s ease-in-out;
 }
 
+body[data-popup-surface="page"] {
+  box-sizing: border-box;
+  max-inline-size: 1200px;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 2.5vw, 1.25rem);
+}
+
+/* Give the native desktop panel a preferred width without sizing menu tabs. */
+body[data-popup-surface="toolbar"] {
+  box-sizing: border-box;
+  inline-size: 360px;
+  max-inline-size: 100%;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 2.5vw, 1.25rem);
+}
+
 body.ready {
   opacity: 1;
   overflow-y: auto;

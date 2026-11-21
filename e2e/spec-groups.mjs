@@ -15,6 +15,7 @@ export const testFiles = Object.freeze([
   'pomodoro.spec.mjs',
   'focus-sound.spec.mjs',
   'popup-native.spec.mjs',
+  'popup-layout.spec.mjs',
   'calendar.spec.mjs',
   'day-boundary.spec.mjs',
   'scheduled-expiry.spec.mjs',
